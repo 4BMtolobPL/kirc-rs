@@ -1,7 +1,9 @@
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
+use uuid::Uuid;
 
-pub(super) type ServerId = String;
+pub(super) type ServerId = Uuid;
+pub(super) type ChannelId = String;
 
 /// 프론트 전달용 State
 #[derive(Serialize, Clone)]

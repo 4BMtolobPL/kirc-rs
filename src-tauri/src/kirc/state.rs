@@ -1,4 +1,4 @@
-use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
+use crate::kirc::types::{ChannelId, ServerCommand, ServerId, ServerStatus};
 use anyhow::anyhow;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
@@ -111,7 +111,7 @@ pub(super) struct ChannelState {
 
 pub(crate) struct IRCClientState {
     pub(super) servers: Mutex<HashMap<ServerId, ServerRuntime>>,
-    pub(super) channel_states: Mutex<HashMap<String, HashMap<String, ChannelState>>>,
+    pub(super) channel_states: Mutex<HashMap<ServerId, HashMap<ChannelId, ChannelState>>>,
     app_state: AtomicU8,
 }
 
@@ -162,14 +162,18 @@ impl IRCClientState {
         self.set_app_state(AppState::Terminated);
     }
 
-    pub(super) fn is_channel_locked(&self, server_id: &str, channel: &str) -> anyhow::Result<bool> {
+    pub(super) fn is_channel_locked(
+        &self,
+        server_id: ServerId,
+        channel: &str,
+    ) -> anyhow::Result<bool> {
         let channels = self
             .channel_states
             .lock()
             .map_err(|e| anyhow!("channel state mutex poisoned"))?;
 
         Ok(channels
-            .get(server_id)
+            .get(&server_id)
             .and_then(|m| m.get(channel))
             .map(|s| s.locked)
             .unwrap_or(false))

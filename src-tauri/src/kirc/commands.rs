@@ -1,13 +1,13 @@
 use crate::error::MyCustomError;
+use crate::kirc::commands::payload::{ChannelLockPayload, ConnectServerPayload};
 use crate::kirc::core::server_actor;
-use crate::kirc::payloads::{
-    ChannelLockChangedEvent, ChannelLockPayload, ConnectServerPayload, ServerStatusPayload,
-};
+use crate::kirc::emits::{emit_channel_lock_changed, emit_server_added, emit_server_status};
 use crate::kirc::state::{IRCClientState, ServerRuntime};
 use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
 use anyhow::{anyhow, Context};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use tauri_plugin_log::log::info;
+use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn connect_server(
@@ -21,7 +21,7 @@ pub(crate) async fn connect_server(
         )));
     }
 
-    let server_id = payload.server_id.clone();
+    let server_id = payload.server_id().unwrap_or(Uuid::now_v7());
     let mut servers = state.servers.lock().unwrap();
 
     match servers.get(&server_id) {
@@ -37,19 +37,23 @@ pub(crate) async fn connect_server(
         _ => {}
     }
 
-    let handle = tokio::spawn(server_actor(server_id.clone(), payload, app_handle.clone()));
+    let handle = tokio::spawn(server_actor(
+        server_id,
+        payload.to_config(),
+        app_handle.clone(),
+    ));
+    emit_server_added(
+        &app_handle,
+        server_id,
+        payload.host(),
+        payload.port(),
+        payload.tls(),
+        payload.nickname(),
+        ServerStatus::Disconnected,
+    )?;
 
-    servers.insert(server_id.clone(), ServerRuntime::Connecting { handle });
-
-    app_handle
-        .emit(
-            "kirc:server_status",
-            ServerStatusPayload {
-                server_id: server_id.to_string(),
-                status: ServerStatus::Connecting,
-            },
-        )
-        .context("Failed to emit kirc:server_connecting")?;
+    servers.insert(server_id, ServerRuntime::Connecting { handle });
+    emit_server_status(&app_handle, server_id, ServerStatus::Connecting)?;
 
     Ok(())
 }
@@ -83,7 +87,7 @@ pub(crate) fn send_message(
     info!("Tauri command: send message invoked, server_id: {server_id}, target: {target}, message: {message}");
 
     // 1. 정책 체크
-    if state.is_channel_locked(&server_id, &target)? {
+    if state.is_channel_locked(server_id, &target)? {
         return Err(MyCustomError::Anyhow(anyhow!("Channel is locked")));
     }
 
@@ -113,17 +117,9 @@ pub(crate) fn cancel_connect(
     if let Some(ServerRuntime::Connecting { handle }) = servers.remove(&server_id) {
         handle.abort();
 
-        servers.insert(server_id.clone(), ServerRuntime::Disconnected);
+        servers.insert(server_id, ServerRuntime::Disconnected);
 
-        app_handle
-            .emit(
-                "kirc:server_status",
-                ServerStatusPayload {
-                    server_id: server_id.to_string(),
-                    status: ServerStatus::Failed,
-                },
-            )
-            .context("Failed to emit kirc:server_status")?;
+        emit_server_status(&app_handle, server_id, ServerStatus::Failed)?;
     }
 
     Ok(())
@@ -131,7 +127,7 @@ pub(crate) fn cancel_connect(
 
 #[tauri::command]
 pub(crate) fn disconnect_server(
-    server_id: String,
+    server_id: ServerId,
     state: State<IRCClientState>,
 ) -> Result<(), MyCustomError> {
     let mut servers = state.servers.lock().expect("Servers lock poisoned");
@@ -162,22 +158,15 @@ pub(crate) fn lock_channel(
             .channel_states
             .lock()
             .map_err(|_| MyCustomError::Anyhow(anyhow!("Channels lock poisoned")))?;
-        let server_entry = channels.entry(payload.server_id.clone()).or_default();
-        let channel_state = server_entry.entry(payload.channel.clone()).or_default();
+        let server_entry = channels.entry(payload.server_id()).or_default();
+        let channel_state = server_entry
+            .entry(payload.channel().to_string())
+            .or_default();
 
         channel_state.locked = true;
     }
 
-    app_handle
-        .emit(
-            "kirc:channel_lock_changed",
-            ChannelLockChangedEvent {
-                server_id: payload.server_id,
-                channel: payload.channel,
-                locked: true,
-            },
-        )
-        .context("Failed to send kirc:channel_lock_changed")?;
+    emit_channel_lock_changed(&app_handle, payload.server_id(), payload.channel(), true)?;
 
     Ok(())
 }
@@ -194,23 +183,14 @@ pub(crate) fn unlock_channel(
             .lock()
             .map_err(|_| MyCustomError::Anyhow(anyhow!("Channels lock poisoned")))?;
 
-        if let Some(server_entry) = channels.get_mut(&payload.server_id) {
-            if let Some(channel_state) = server_entry.get_mut(&payload.channel) {
+        if let Some(server_entry) = channels.get_mut(&payload.server_id()) {
+            if let Some(channel_state) = server_entry.get_mut(payload.channel()) {
                 channel_state.locked = false;
             }
         }
     }
 
-    app_handle
-        .emit(
-            "kirc:channel_lock_changed",
-            ChannelLockChangedEvent {
-                server_id: payload.server_id,
-                channel: payload.channel,
-                locked: false,
-            },
-        )
-        .context("Failed to send kirc:channel_lock_changed")?;
+    emit_channel_lock_changed(&app_handle, payload.server_id(), payload.channel(), false)?;
 
     Ok(())
 }
@@ -226,8 +206,71 @@ pub fn is_channel_locked(
         .map_err(|_| MyCustomError::Anyhow(anyhow!("Channels lock poisoned")))?;
 
     Ok(channels
-        .get(&payload.server_id)
-        .and_then(|m| m.get(&payload.channel))
+        .get(&payload.server_id())
+        .and_then(|m| m.get(payload.channel()))
         .map(|s| s.locked)
         .unwrap_or(false))
+}
+
+mod payload {
+    use crate::kirc::core::ServerConfig;
+    use crate::kirc::types::{ChannelId, ServerId};
+    use serde::Deserialize;
+
+    #[derive(Deserialize, Debug, Clone)]
+    pub(crate) struct ConnectServerPayload {
+        server_id: Option<ServerId>,
+        host: String,
+        port: u16,
+        tls: bool,
+        nickname: String,
+    }
+
+    impl ConnectServerPayload {
+        pub(super) fn server_id(&self) -> Option<ServerId> {
+            self.server_id
+        }
+
+        pub(super) fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub(super) fn port(&self) -> u16 {
+            self.port
+        }
+
+        pub(super) fn tls(&self) -> bool {
+            self.tls
+        }
+
+        pub(super) fn nickname(&self) -> &str {
+            &self.nickname
+        }
+
+        pub(super) fn to_config(&self) -> ServerConfig {
+            ServerConfig::new(
+                self.host.to_string(),
+                self.port,
+                self.tls,
+                self.nickname.to_string(),
+            )
+        }
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(crate) struct ChannelLockPayload {
+        server_id: ServerId,
+        channel: ChannelId,
+    }
+
+    impl ChannelLockPayload {
+        pub(super) fn server_id(&self) -> ServerId {
+            self.server_id
+        }
+
+        pub(super) fn channel(&self) -> &str {
+            &self.channel
+        }
+    }
 }

@@ -4,7 +4,7 @@
     import type {IrcServerStatus} from "../types/kirc.svelte";
     import {SvelteMap} from "svelte/reactivity";
     import {servers} from "../stores/stores.svelte";
-    import {ServerStatus, type ServerStatusPayload} from "../types/payloads.svelte";
+    import {type ServerDetail, ServerStatus, type ServerStatusPayload} from "../types/payloads.svelte";
 
     interface Props {
         showServerModal: boolean;
@@ -44,34 +44,12 @@
     const submit = async () => {
         if (!validate()) return;
         connecting = true;
-        serverId = crypto.randomUUID();
 
         let payload = {
-            server_id: serverId,
             ...form
         };
 
         await invoke("connect_server", {payload: payload});
-
-        servers.update((map) => {
-            const newMap = new SvelteMap(map);
-            if (newMap.has(payload.server_id)) return newMap;
-
-            newMap.set(payload.server_id, {
-                id: payload.server_id,
-                name: payload.host,
-                host: payload.host,
-                port: payload.port,
-                tls: payload.tls,
-                nickname: payload.nickname,
-                status: "connecting",
-
-                channels: new SvelteMap(),
-                serverMessages: [],
-            });
-
-            return newMap;
-        });
     }
 
     const cancel = () => {
@@ -82,9 +60,30 @@
         }
     }
 
-    /*const reconnect = (previousPayload: Payload) => {
-        invoke("connect_server", previousPayload);
-    }*/
+    listen<ServerDetail>("kirc:server_added", (e) => {
+        const payload = e.payload;
+        console.log("kirc:server_added", payload);
+
+        servers.update((map) => {
+            const newMap = new SvelteMap(map);
+            if (newMap.has(payload.serverId)) return newMap;
+
+            newMap.set(payload.serverId, {
+                id: payload.serverId,
+                name: payload.host,
+                host: payload.host,
+                port: payload.port,
+                tls: payload.tls,
+                nickname: payload.nickname,
+                status: payload.status.toLowerCase() as IrcServerStatus,
+
+                channels: new SvelteMap(),
+                serverMessages: [],
+            });
+
+            return newMap;
+        });
+    });
 
     listen<ServerStatusPayload>("kirc:server_status", (e) => {
         const serverStatusPayload = e.payload;
