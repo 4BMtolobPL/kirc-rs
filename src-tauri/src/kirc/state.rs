@@ -1,212 +1,17 @@
-use crate::kirc::types::{ChannelId, ServerCommand, ServerId};
+mod app_state;
+pub(super) mod server_state;
+
+use crate::kirc::core::server_actor;
+use crate::kirc::types::server::ServerConfig;
+use crate::kirc::types::ServerId;
 use anyhow::anyhow;
-use std::cmp::PartialEq;
+use app_state::AppState;
+use server_state::{ServerRuntime, ServerState};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::task::JoinHandle;
-use tokio::time::timeout;
-
-#[derive(Default)]
-pub(super) enum ServerRuntime {
-    #[default]
-    Disconnected,
-    Connecting {
-        handle: JoinHandle<()>,
-    },
-    Registering {
-        tx: UnboundedSender<ServerCommand>,
-        handle: JoinHandle<()>,
-    },
-    Connected {
-        tx: UnboundedSender<ServerCommand>,
-        handle: JoinHandle<()>,
-    },
-    Disconnecting {
-        handle: JoinHandle<()>,
-    },
-    Failed {
-        error: String,
-    },
-}
-
-impl ServerRuntime {
-    /*fn status(&self) -> ServerStatus {
-        match self {
-            ServerRuntime::Disconnected => ServerStatus::Disconnected,
-            ServerRuntime::Connecting { .. } => ServerStatus::Connecting,
-            ServerRuntime::Registering { .. } => ServerStatus::Registering,
-            ServerRuntime::Connected { .. } => ServerStatus::Connected,
-            ServerRuntime::Disconnecting { .. } => ServerStatus::Disconnecting,
-            ServerRuntime::Failed { .. } => ServerStatus::Failed,
-        }
-    }*/
-
-    async fn graceful_shutdown(self) {
-        const TIMEOUT: Duration = Duration::from_secs(5);
-
-        match self {
-            ServerRuntime::Connected { tx, handle } | ServerRuntime::Registering { tx, handle } => {
-                // 1. QUIT 전송
-                let _ = tx.send(ServerCommand::Quit);
-
-                // 2. 정상 종료 대기 (timeout optional)
-                let _ = timeout(TIMEOUT, handle).await;
-            }
-
-            ServerRuntime::Connecting { handle } => {
-                handle.abort();
-                let _ = handle.await;
-            }
-
-            ServerRuntime::Disconnecting { handle } => {
-                let _ = timeout(TIMEOUT, handle).await;
-            }
-
-            ServerRuntime::Disconnected | ServerRuntime::Failed { .. } => {
-                // nothing
-            }
-        }
-    }
-}
-
-#[derive(PartialEq)]
-pub(crate) enum AppState {
-    Running,
-    ShuttingDown,
-    Terminated,
-}
-
-impl AppState {
-    fn as_u8(&self) -> u8 {
-        match self {
-            AppState::Running => 0,
-            AppState::ShuttingDown => 1,
-            AppState::Terminated => 2,
-        }
-    }
-
-    fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            0 => Some(Self::Running),
-            1 => Some(Self::ShuttingDown),
-            2 => Some(Self::Terminated),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Default)]
-pub(super) struct ChannelState {
-    pub(super) locked: bool,
-}
-
-pub(super) struct ServerState {
-    runtime: Mutex<ServerRuntime>,
-    channels: Mutex<HashMap<ChannelId, ChannelState>>,
-}
-
-impl ServerState {
-    pub(super) fn new(runtime: ServerRuntime) -> Self {
-        Self {
-            runtime: Mutex::new(runtime),
-            channels: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /*pub(super) fn status(&self) -> ServerStatus {
-        self.runtime.lock().unwrap().status()
-    }*/
-
-    pub(super) fn is_active(&self) -> bool {
-        matches!(
-            &*self.runtime.lock().unwrap(),
-            ServerRuntime::Connecting { .. }
-                | ServerRuntime::Registering { .. }
-                | ServerRuntime::Connected { .. }
-        )
-    }
-
-    pub(super) fn is_channel_locked(&self, channel: &str) -> bool {
-        self.channels
-            .lock()
-            .unwrap()
-            .get(channel)
-            .map(|s| s.locked)
-            .unwrap_or(false)
-    }
-
-    pub(super) fn set_channel_locked(&self, channel: &str, locked: bool) {
-        self.channels
-            .lock()
-            .unwrap()
-            .entry(channel.to_string())
-            .or_default()
-            .locked = locked;
-    }
-
-    pub(super) fn send_command(&self, cmd: ServerCommand) -> anyhow::Result<()> {
-        let guard = self.runtime.lock().unwrap();
-        match &*guard {
-            ServerRuntime::Connected { tx, .. } | ServerRuntime::Registering { tx, .. } => {
-                tx.send(cmd).map_err(|e| anyhow!("Failed to send: {}", e))
-            }
-            _ => Err(anyhow!("Server not connected")),
-        }
-    }
-
-    pub(super) fn transition_to_registering(&self, tx: UnboundedSender<ServerCommand>) {
-        let mut guard = self.runtime.lock().unwrap();
-        if let ServerRuntime::Connecting { handle } = std::mem::take(&mut *guard) {
-            *guard = ServerRuntime::Registering { tx, handle };
-        }
-    }
-
-    pub(super) fn transition_to_connected(&self) {
-        let mut guard = self.runtime.lock().unwrap();
-        if let ServerRuntime::Registering { tx, handle } = std::mem::take(&mut *guard) {
-            *guard = ServerRuntime::Connected { tx, handle };
-        }
-    }
-
-    pub(super) fn transition_to_disconnected(&self) {
-        *self.runtime.lock().unwrap() = ServerRuntime::Disconnected;
-    }
-
-    pub(super) fn transition_to_failed(&self, error: String) {
-        *self.runtime.lock().unwrap() = ServerRuntime::Failed { error };
-    }
-
-    pub(super) fn disconnect(&self) {
-        let mut guard = self.runtime.lock().unwrap();
-        match std::mem::take(&mut *guard) {
-            ServerRuntime::Registering { tx, handle } | ServerRuntime::Connected { tx, handle } => {
-                let _ = tx.send(ServerCommand::Quit);
-                *guard = ServerRuntime::Disconnecting { handle };
-            }
-            other => {
-                *guard = other;
-            }
-        }
-    }
-
-    pub(super) fn abort_connecting(&self) -> bool {
-        let mut guard = self.runtime.lock().unwrap();
-        if let ServerRuntime::Connecting { handle } = std::mem::take(&mut *guard) {
-            handle.abort();
-            *guard = ServerRuntime::Disconnected;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(super) fn take_runtime(&self) -> ServerRuntime {
-        std::mem::take(&mut *self.runtime.lock().unwrap())
-    }
-}
+use tauri::AppHandle;
+use uuid::Uuid;
 
 pub(crate) struct IRCClientState {
     servers: Mutex<HashMap<ServerId, Arc<ServerState>>>,
@@ -225,19 +30,32 @@ impl IRCClientState {
         self.servers.lock().unwrap().get(&server_id).cloned()
     }
 
-    pub(super) fn add_server(&self, server_id: ServerId, state: ServerState) {
-        self.servers
-            .lock()
-            .unwrap()
-            .insert(server_id, Arc::new(state));
+    pub(super) fn add_server(&self, config: ServerConfig) -> ServerId {
+        let server_id = Uuid::now_v7();
+
+        self.servers.lock().unwrap().insert(
+            server_id,
+            Arc::new(ServerState::new(ServerRuntime::Disconnected, config)),
+        );
+
+        server_id
     }
 
-    pub(super) fn ensure_server(&self, server_id: ServerId) -> Arc<ServerState> {
-        let mut servers = self.servers.lock().unwrap();
-        servers
-            .entry(server_id)
-            .or_insert_with(|| Arc::new(ServerState::new(ServerRuntime::Disconnected)))
-            .clone()
+    pub(super) fn run_server(
+        &self,
+        server_id: ServerId,
+        app_handle: &AppHandle,
+    ) -> anyhow::Result<()> {
+        if let Some(server) = self.get_server(server_id) {
+            let config = server.config();
+
+            let handle = tokio::spawn(server_actor(server_id, config, app_handle.clone()));
+
+            server.transition_to_connecting(handle);
+            Ok(())
+        } else {
+            Err(anyhow!("Server not found"))
+        }
     }
 
     fn app_state(&self) -> Option<AppState> {

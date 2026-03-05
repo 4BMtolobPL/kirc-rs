@@ -1,13 +1,11 @@
 use crate::error::MyCustomError;
 use crate::kirc::commands::payload::{ChannelLockPayload, ConnectServerPayload};
-use crate::kirc::core::server_actor;
 use crate::kirc::emits::{emit_channel_lock_changed, emit_server_added, emit_server_status};
-use crate::kirc::state::{IRCClientState, ServerRuntime, ServerState};
+use crate::kirc::state::IRCClientState;
 use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
 use anyhow::{anyhow, Context};
 use tauri::{AppHandle, State};
 use tauri_plugin_log::log::info;
-use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn connect_server(
@@ -21,35 +19,37 @@ pub(crate) async fn connect_server(
         )));
     }
 
-    let server_id = payload.server_id().unwrap_or(Uuid::now_v7());
+    let server_id = if let Some(server_id) = payload.server_id() {
+        if let Some(server) = state.get_server(server_id) {
+            if server.is_active() {
+                return Err(MyCustomError::Anyhow(anyhow!(
+                    "Already connecting or connected"
+                )));
+            }
 
-    if let Some(server) = state.get_server(server_id) {
-        if server.is_active() {
-            return Err(MyCustomError::Anyhow(anyhow!(
-                "Already connecting or connected"
-            )));
+            server_id
+        } else {
+            // payload에 server_id는 있지만 실제 저장된 server가 없는 경우
+            return Err(MyCustomError::Anyhow(anyhow!("Server not found")));
         }
-    }
+    } else {
+        // payload에 server_id가 없는 경우(신규)
+        let server_id = state.add_server(payload.to_config());
 
-    let handle = tokio::spawn(server_actor(
-        server_id,
-        payload.to_config(),
-        app_handle.clone(),
-    ));
-    emit_server_added(
-        &app_handle,
-        server_id,
-        payload.host(),
-        payload.port(),
-        payload.tls(),
-        payload.nickname(),
-        ServerStatus::Disconnected,
-    )?;
+        emit_server_added(
+            &app_handle,
+            server_id,
+            payload.host(),
+            payload.port(),
+            payload.tls(),
+            payload.nickname(),
+            ServerStatus::Disconnected,
+        )?;
 
-    state.add_server(
-        server_id,
-        ServerState::new(ServerRuntime::Connecting { handle }),
-    );
+        server_id
+    };
+
+    state.run_server(server_id, &app_handle)?;
     emit_server_status(&app_handle, server_id, ServerStatus::Connecting)?;
 
     Ok(())
@@ -111,9 +111,11 @@ pub(crate) fn cancel_connect(
 pub(crate) fn disconnect_server(
     server_id: ServerId,
     state: State<IRCClientState>,
+    app_handle: AppHandle,
 ) -> Result<(), MyCustomError> {
     if let Some(server) = state.get_server(server_id) {
         server.disconnect();
+        emit_server_status(&app_handle, server_id, server.status())?;
     }
     Ok(())
 }
@@ -124,7 +126,9 @@ pub(crate) fn lock_channel(
     state: State<IRCClientState>,
     app_handle: AppHandle,
 ) -> Result<(), MyCustomError> {
-    let server = state.ensure_server(payload.server_id());
+    let server = state
+        .get_server(payload.server_id())
+        .context("Can't find server")?;
     server.set_channel_locked(payload.channel(), true);
 
     emit_channel_lock_changed(&app_handle, payload.server_id(), payload.channel(), true)?;
@@ -148,7 +152,7 @@ pub(crate) fn unlock_channel(
 }
 
 #[tauri::command]
-pub fn is_channel_locked(
+pub(crate) fn is_channel_locked(
     payload: ChannelLockPayload,
     state: State<IRCClientState>,
 ) -> Result<bool, MyCustomError> {
@@ -156,7 +160,7 @@ pub fn is_channel_locked(
 }
 
 mod payload {
-    use crate::kirc::core::ServerConfig;
+    use crate::kirc::types::server::ServerConfig;
     use crate::kirc::types::{ChannelId, ServerId};
     use serde::Deserialize;
 

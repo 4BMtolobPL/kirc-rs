@@ -3,9 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub(crate) enum MyCustomError {
-    #[error("IRC server error: {0}")]
-    IRCServer(String),
-
+    /*#[error("IRC server error: {0}")]
+    IRCServer(String),*/
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
 }

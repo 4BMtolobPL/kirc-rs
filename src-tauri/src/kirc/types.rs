@@ -1,3 +1,5 @@
+pub(super) mod server;
+
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
@@ -16,7 +18,7 @@ pub(super) enum ServerStatus {
     Failed,
 }
 
-pub(crate) enum ServerCommand {
+pub(in crate::kirc) enum ServerCommand {
     Join(String),
     Privmsg { target: String, message: String },
     Quit,

@@ -1,28 +1,11 @@
 use crate::kirc::emits::{emit_server_status, emit_system_message, emit_ui_event};
-use crate::kirc::state::{IRCClientState, ServerRuntime};
+use crate::kirc::state::IRCClientState;
+use crate::kirc::types::server::ServerConfig;
 use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
 use futures::prelude::*;
 use irc::client::prelude::*;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log::{error, trace};
-
-pub(super) struct ServerConfig {
-    server: String,
-    port: u16,
-    use_tls: bool,
-    nickname: String,
-}
-
-impl ServerConfig {
-    pub(super) fn new(server: String, port: u16, use_tls: bool, nickname: String) -> Self {
-        Self {
-            server,
-            port,
-            use_tls,
-            nickname,
-        }
-    }
-}
 
 pub(super) async fn server_actor(
     server_id: ServerId,
@@ -32,10 +15,10 @@ pub(super) async fn server_actor(
     // actor에선 error를 ?로 전파하지 않고, 소비/로깅만 하거나 이벤트로 전파
 
     let config = Config {
-        server: Some(server_config.server),
-        port: Some(server_config.port),
-        use_tls: Some(server_config.use_tls),
-        nickname: Some(server_config.nickname),
+        server: Some(server_config.server().to_string()),
+        port: Some(server_config.port()),
+        use_tls: Some(server_config.use_tls()),
+        nickname: Some(server_config.nickname().to_string()),
         ..Config::default()
     };
 

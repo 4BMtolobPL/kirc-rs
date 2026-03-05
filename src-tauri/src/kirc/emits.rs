@@ -5,8 +5,26 @@ use crate::kirc::emits::payload::{
 use crate::kirc::types::{ServerId, ServerStatus};
 use tauri::{AppHandle, Emitter};
 
-pub(super) fn emit_server_added(app_handle: &AppHandle, server_id: ServerId, host: &str, port: u16, tls: bool, nickname: &str, status: ServerStatus) -> anyhow::Result<()> {
-    app_handle.emit("kirc:server_added", ServerDetail::new(server_id, host.to_string(), port, tls, nickname.to_string(), status))?;
+pub(super) fn emit_server_added(
+    app_handle: &AppHandle,
+    server_id: ServerId,
+    host: &str,
+    port: u16,
+    tls: bool,
+    nickname: &str,
+    status: ServerStatus,
+) -> anyhow::Result<()> {
+    app_handle.emit(
+        "kirc:server_added",
+        ServerDetail::new(
+            server_id,
+            host.to_string(),
+            port,
+            tls,
+            nickname.to_string(),
+            status,
+        ),
+    )?;
 
     Ok(())
 }
