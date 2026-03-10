@@ -72,6 +72,7 @@ pub fn run() {
             kirc::commands::get_servers,
             kirc::commands::connect_server,
             kirc::commands::join_channel,
+            kirc::commands::leave_channel,
             kirc::commands::send_message,
             kirc::commands::cancel_connect,
             kirc::commands::disconnect_server,

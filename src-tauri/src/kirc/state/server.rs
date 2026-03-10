@@ -122,6 +122,10 @@ impl ServerState {
         );
     }
 
+    pub(in crate::kirc) fn remove_channel(&self, channel_name: &str) -> Option<ChannelState> {
+        self.channels.lock().unwrap().remove(channel_name)
+    }
+
     pub(in crate::kirc) fn is_active(&self) -> bool {
         matches!(
             &*self.runtime.lock().unwrap(),

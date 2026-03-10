@@ -21,6 +21,7 @@ pub(super) enum ServerStatus {
 pub(in crate::kirc) enum ServerCommand {
     Join(String),
     Privmsg { target: String, message: String },
+    Part { channel_name: String },
     Quit,
 }
 
@@ -29,6 +30,7 @@ impl Display for ServerCommand {
         match self {
             ServerCommand::Join(x) => write!(f, "Join, {x}"),
             ServerCommand::Privmsg { target, message } => write!(f, "Privmsg, {target}, {message}"),
+            ServerCommand::Part { channel_name } => write!(f, "Part, {channel_name}"),
             ServerCommand::Quit => write!(f, "Quit"),
         }
     }

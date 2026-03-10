@@ -91,6 +91,11 @@ pub(super) async fn server_actor(
                                 }
                             }
                     }
+                    ServerCommand::Part { channel_name } => {
+                        if let Err(e) = client.send_part(&channel_name) {
+                            error!("Failed to send part: {e}");
+                        }
+                    }
                     ServerCommand::Quit => {
                         if let Err(e) = client.send_quit("bye") {
                             error!("Failed to send quit message: {e}");

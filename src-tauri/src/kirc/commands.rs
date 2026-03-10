@@ -1,6 +1,6 @@
 use crate::error::MyCustomError;
 use crate::kirc::commands::payload::{
-    ChannelInfo, ChannelLockPayload, ConnectServerPayload, ServerInfo,
+    ChannelInfo, ChannelPayload, ConnectServerPayload, ServerInfo,
 };
 use crate::kirc::manager::KircManager;
 use crate::kirc::state::kirc::KircState;
@@ -73,6 +73,19 @@ pub(crate) fn join_channel(
 }
 
 #[tauri::command]
+pub(crate) fn leave_channel(
+    payload: ChannelPayload,
+    manager: State<KircManager>,
+) -> Result<(), MyCustomError> {
+    info!("Tauri command: part channel invoked");
+    manager
+        .part_channel(payload.server_id(), payload.channel())
+        .map_err(MyCustomError::Anyhow)?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub(crate) fn send_message(
     server_id: ServerId,
     target: String,
@@ -120,7 +133,7 @@ pub(crate) fn disconnect_server(
 
 #[tauri::command]
 pub(crate) fn lock_channel(
-    payload: ChannelLockPayload,
+    payload: ChannelPayload,
     state: State<'_, Arc<KircState>>,
     app_handle: AppHandle,
 ) -> Result<(), MyCustomError> {
@@ -141,7 +154,7 @@ pub(crate) fn lock_channel(
 
 #[tauri::command]
 pub(crate) fn unlock_channel(
-    payload: ChannelLockPayload,
+    payload: ChannelPayload,
     state: State<'_, Arc<KircState>>,
     app_handle: AppHandle,
 ) -> Result<(), MyCustomError> {
@@ -161,7 +174,7 @@ pub(crate) fn unlock_channel(
 
 #[tauri::command]
 pub(crate) fn is_channel_locked(
-    payload: ChannelLockPayload,
+    payload: ChannelPayload,
     state: State<'_, Arc<KircState>>,
 ) -> Result<bool, MyCustomError> {
     Ok(state.is_channel_locked(payload.server_id(), payload.channel()))
@@ -198,12 +211,12 @@ mod payload {
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub(crate) struct ChannelLockPayload {
+    pub(crate) struct ChannelPayload {
         server_id: ServerId,
         channel: ChannelId,
     }
 
-    impl ChannelLockPayload {
+    impl ChannelPayload {
         pub(super) fn server_id(&self) -> ServerId {
             self.server_id
         }

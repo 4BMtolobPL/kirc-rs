@@ -1,7 +1,6 @@
 use crate::kirc::core::server_actor;
 use crate::kirc::emits::{emit_server_added, emit_server_status};
 use crate::kirc::state::app::AppState;
-use crate::kirc::state::channel::ChannelState;
 use crate::kirc::state::kirc::KircState;
 use crate::kirc::types::server::ServerConfig;
 use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
@@ -140,6 +139,23 @@ impl KircManager {
             .context("Can't find server")?;
         server.send_command(ServerCommand::Join(channel_name.to_string()))?;
         server.insert_channel(channel_name, false);
+
+        Ok(())
+    }
+
+    pub(in crate::kirc) fn part_channel(
+        &self,
+        server_id: ServerId,
+        channel_id: &str,
+    ) -> anyhow::Result<()> {
+        let server = self
+            .kirc_state
+            .get_server(server_id)
+            .context("Can't find server")?;
+        server.send_command(ServerCommand::Part {
+            channel_name: channel_id.to_string(),
+        })?;
+        server.remove_channel(channel_id);
 
         Ok(())
     }
