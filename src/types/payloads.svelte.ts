@@ -7,6 +7,15 @@ export enum ServerStatus {
     Failed = "Failed",
 }
 
+export type ServerDetail = {
+    serverId: string;
+    host: string;
+    port: number;
+    tls: boolean;
+    nickname: string;
+    status: ServerStatus;
+}
+
 export type ServerStatusPayload = {
     serverId: string, status: ServerStatus,
 }

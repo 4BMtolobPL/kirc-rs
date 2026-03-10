@@ -1,55 +1,59 @@
 use crate::error::MyCustomError;
-use crate::kirc::core::server_actor;
-use crate::kirc::payloads::{
-    ChannelLockChangedEvent, ChannelLockPayload, ConnectServerPayload, ServerStatusPayload,
+use crate::kirc::commands::payload::{
+    ChannelInfo, ChannelLockPayload, ConnectServerPayload, ServerInfo,
 };
-use crate::kirc::state::{IRCClientState, ServerRuntime};
-use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
-use anyhow::{anyhow, Context};
-use tauri::{AppHandle, Emitter, State};
+use crate::kirc::manager::KircManager;
+use crate::kirc::state::kirc::KircState;
+use crate::kirc::types::ServerId;
+use anyhow::Context;
+use std::sync::Arc;
+use tauri::{AppHandle, State};
 use tauri_plugin_log::log::info;
+
+#[tauri::command]
+pub(crate) async fn init_servers(manager: State<'_, KircManager>) -> Result<(), MyCustomError> {
+    manager.process_auto_connect();
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn get_servers(
+    state: State<'_, Arc<KircState>>,
+) -> Result<Vec<ServerInfo>, MyCustomError> {
+    let servers = state.get_all_servers();
+    let mut infos = Vec::new();
+
+    for (id, server_state) in servers {
+        let config = server_state.config();
+        let channel_infos = server_state
+            .channels()
+            .into_iter()
+            .map(|(name, s)| ChannelInfo::new(&name, s.locked))
+            .collect();
+
+        infos.push(ServerInfo::new(
+            id,
+            config.server(),
+            config.server(),
+            config.port(),
+            config.use_tls(),
+            config.nickname(),
+            server_state.status(),
+            channel_infos,
+        ));
+    }
+
+    Ok(infos)
+}
 
 #[tauri::command]
 pub(crate) async fn connect_server(
     payload: ConnectServerPayload,
-    state: State<'_, IRCClientState>,
-    app_handle: AppHandle,
+    manager: State<'_, KircManager>,
 ) -> Result<(), MyCustomError> {
-    if state.is_shutting_down() {
-        return Err(MyCustomError::Anyhow(anyhow!(
-            "Application is shutting down"
-        )));
-    }
-
-    let server_id = payload.server_id.clone();
-    let mut servers = state.servers.lock().unwrap();
-
-    match servers.get(&server_id) {
-        Some(
-            ServerRuntime::Connecting { .. }
-            | ServerRuntime::Registering { .. }
-            | ServerRuntime::Connected { .. },
-        ) => {
-            return Err(MyCustomError::IRCServer(
-                "Already connecting or connected".into(),
-            ));
-        }
-        _ => {}
-    }
-
-    let handle = tokio::spawn(server_actor(server_id.clone(), payload, app_handle.clone()));
-
-    servers.insert(server_id.clone(), ServerRuntime::Connecting { handle });
-
-    app_handle
-        .emit(
-            "kirc:server_status",
-            ServerStatusPayload {
-                server_id: server_id.to_string(),
-                status: ServerStatus::Connecting,
-            },
-        )
-        .context("Failed to emit kirc:server_connecting")?;
+    manager
+        .connect_server(payload.server_id(), payload.to_config())
+        .map_err(MyCustomError::Anyhow)?;
 
     Ok(())
 }
@@ -58,17 +62,12 @@ pub(crate) async fn connect_server(
 pub(crate) fn join_channel(
     server_id: ServerId,
     channel: String,
-    state: State<IRCClientState>,
+    manager: State<KircManager>,
 ) -> Result<(), MyCustomError> {
     info!("Tauri command: join channel invoked, server_id: {server_id}, channel: {channel}");
-
-    let servers = state.servers.lock().expect("Servers lock poisoned");
-    let server = servers.get(&server_id).context("Can't find server")?;
-
-    if let ServerRuntime::Connected { tx, .. } = server {
-        tx.send(ServerCommand::Join(channel))
-            .context("Failed to send join command")?;
-    }
+    manager
+        .join_channel(server_id, &channel)
+        .map_err(MyCustomError::Anyhow)?;
 
     Ok(())
 }
@@ -78,25 +77,18 @@ pub(crate) fn send_message(
     server_id: ServerId,
     target: String,
     message: String,
-    state: State<IRCClientState>,
+    state: State<Arc<KircState>>,
 ) -> Result<(), MyCustomError> {
     info!("Tauri command: send message invoked, server_id: {server_id}, target: {target}, message: {message}");
 
     // 1. 정책 체크
-    if state.is_channel_locked(&server_id, &target)? {
-        return Err(MyCustomError::Anyhow(anyhow!("Channel is locked")));
+    if state.is_channel_locked(server_id, &target) {
+        return Err(MyCustomError::Anyhow(anyhow::anyhow!("Channel is locked")));
     }
 
     // 2. 서버 runtime 접근
-    let servers = state.servers.lock().expect("Servers lock poisoned");
-    let runtime = servers.get(&server_id).context("Can't find server")?;
-
-    if let ServerRuntime::Connected { tx, .. } = runtime {
-        tx.send(ServerCommand::Privmsg { target, message })
-            .context("Failed to send privmsg")?;
-    } else {
-        return Err(MyCustomError::Anyhow(anyhow!("Server not connected")));
-    }
+    let server = state.get_server(server_id).context("Can't find server")?;
+    server.send_command(crate::kirc::types::ServerCommand::Privmsg { target, message })?;
 
     Ok(())
 }
@@ -104,80 +96,45 @@ pub(crate) fn send_message(
 #[tauri::command]
 pub(crate) fn cancel_connect(
     server_id: ServerId,
-    state: State<IRCClientState>,
-    app_handle: AppHandle,
+    manager: State<'_, KircManager>,
 ) -> Result<(), MyCustomError> {
     info!("Tauri command: cancel connect invoked, server_id: {server_id}");
-    let mut servers = state.servers.lock().expect("Servers lock poisoned");
 
-    if let Some(ServerRuntime::Connecting { handle }) = servers.remove(&server_id) {
-        handle.abort();
-
-        servers.insert(server_id.clone(), ServerRuntime::Disconnected);
-
-        app_handle
-            .emit(
-                "kirc:server_status",
-                ServerStatusPayload {
-                    server_id: server_id.to_string(),
-                    status: ServerStatus::Failed,
-                },
-            )
-            .context("Failed to emit kirc:server_status")?;
-    }
+    manager
+        .cancel_connect(server_id)
+        .map_err(MyCustomError::Anyhow)?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub(crate) fn disconnect_server(
-    server_id: String,
-    state: State<IRCClientState>,
+    server_id: ServerId,
+    manager: State<'_, KircManager>,
 ) -> Result<(), MyCustomError> {
-    let mut servers = state.servers.lock().expect("Servers lock poisoned");
-
-    if let Some(runtime) = servers.remove(&server_id) {
-        match runtime {
-            ServerRuntime::Registering { tx, handle } | ServerRuntime::Connected { tx, handle } => {
-                let _ = tx.send(ServerCommand::Quit);
-                servers.insert(server_id, ServerRuntime::Disconnecting { handle });
-            }
-            other => {
-                servers.insert(server_id, other);
-            }
-        }
-    }
-
+    manager
+        .disconnect_server(server_id)
+        .map_err(MyCustomError::Anyhow)?;
     Ok(())
 }
 
 #[tauri::command]
 pub(crate) fn lock_channel(
     payload: ChannelLockPayload,
-    state: State<IRCClientState>,
+    state: State<'_, Arc<KircState>>,
     app_handle: AppHandle,
 ) -> Result<(), MyCustomError> {
-    {
-        let mut channels = state
-            .channel_states
-            .lock()
-            .map_err(|_| MyCustomError::Anyhow(anyhow!("Channels lock poisoned")))?;
-        let server_entry = channels.entry(payload.server_id.clone()).or_default();
-        let channel_state = server_entry.entry(payload.channel.clone()).or_default();
+    let server = state
+        .get_server(payload.server_id())
+        .context("Can't find server")?;
+    server.set_channel_locked(payload.channel(), true);
 
-        channel_state.locked = true;
-    }
-
-    app_handle
-        .emit(
-            "kirc:channel_lock_changed",
-            ChannelLockChangedEvent {
-                server_id: payload.server_id,
-                channel: payload.channel,
-                locked: true,
-            },
-        )
-        .context("Failed to send kirc:channel_lock_changed")?;
+    crate::kirc::emits::emit_channel_lock_changed(
+        &app_handle,
+        payload.server_id(),
+        payload.channel(),
+        true,
+    )?;
 
     Ok(())
 }
@@ -185,49 +142,127 @@ pub(crate) fn lock_channel(
 #[tauri::command]
 pub(crate) fn unlock_channel(
     payload: ChannelLockPayload,
-    state: State<IRCClientState>,
+    state: State<'_, Arc<KircState>>,
     app_handle: AppHandle,
 ) -> Result<(), MyCustomError> {
-    {
-        let mut channels = state
-            .channel_states
-            .lock()
-            .map_err(|_| MyCustomError::Anyhow(anyhow!("Channels lock poisoned")))?;
-
-        if let Some(server_entry) = channels.get_mut(&payload.server_id) {
-            if let Some(channel_state) = server_entry.get_mut(&payload.channel) {
-                channel_state.locked = false;
-            }
-        }
+    if let Some(server) = state.get_server(payload.server_id()) {
+        server.set_channel_locked(payload.channel(), false);
     }
 
-    app_handle
-        .emit(
-            "kirc:channel_lock_changed",
-            ChannelLockChangedEvent {
-                server_id: payload.server_id,
-                channel: payload.channel,
-                locked: false,
-            },
-        )
-        .context("Failed to send kirc:channel_lock_changed")?;
+    crate::kirc::emits::emit_channel_lock_changed(
+        &app_handle,
+        payload.server_id(),
+        payload.channel(),
+        false,
+    )?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn is_channel_locked(
+pub(crate) fn is_channel_locked(
     payload: ChannelLockPayload,
-    state: State<IRCClientState>,
+    state: State<'_, Arc<KircState>>,
 ) -> Result<bool, MyCustomError> {
-    let channels = state
-        .channel_states
-        .lock()
-        .map_err(|_| MyCustomError::Anyhow(anyhow!("Channels lock poisoned")))?;
+    Ok(state.is_channel_locked(payload.server_id(), payload.channel()))
+}
 
-    Ok(channels
-        .get(&payload.server_id)
-        .and_then(|m| m.get(&payload.channel))
-        .map(|s| s.locked)
-        .unwrap_or(false))
+mod payload {
+    use crate::kirc::types::server::ServerConfig;
+    use crate::kirc::types::{ChannelId, ServerId, ServerStatus};
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Debug, Clone)]
+    pub(crate) struct ConnectServerPayload {
+        server_id: Option<ServerId>,
+        host: String,
+        port: u16,
+        tls: bool,
+        nickname: String,
+    }
+
+    impl ConnectServerPayload {
+        pub(super) fn server_id(&self) -> Option<ServerId> {
+            self.server_id
+        }
+
+        pub(super) fn to_config(&self) -> ServerConfig {
+            ServerConfig::new(
+                self.host.to_string(),
+                self.port,
+                self.tls,
+                self.nickname.to_string(),
+            )
+        }
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(crate) struct ChannelLockPayload {
+        server_id: ServerId,
+        channel: ChannelId,
+    }
+
+    impl ChannelLockPayload {
+        pub(super) fn server_id(&self) -> ServerId {
+            self.server_id
+        }
+
+        pub(super) fn channel(&self) -> &str {
+            &self.channel
+        }
+    }
+
+    #[derive(Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(crate) struct ChannelInfo {
+        name: String,
+        locked: bool,
+    }
+
+    impl ChannelInfo {
+        pub(super) fn new(name: &str, locked: bool) -> Self {
+            Self {
+                name: name.to_string(),
+                locked,
+            }
+        }
+    }
+
+    #[derive(Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub(crate) struct ServerInfo {
+        id: ServerId,
+        name: String,
+        host: String,
+        port: u16,
+        tls: bool,
+        nickname: String,
+        status: ServerStatus,
+        channels: Vec<ChannelInfo>,
+    }
+
+    impl ServerInfo {
+        pub(super) fn new(
+            id: ServerId,
+            name: &str,
+            host: &str,
+            port: u16,
+            tls: bool,
+            nickname: &str,
+            status: ServerStatus,
+            channels: Vec<ChannelInfo>,
+        ) -> Self {
+            Self {
+                id,
+                name: name.to_string(),
+                host: host.to_string(),
+                port,
+                tls,
+                nickname: nickname.to_string(),
+                status,
+                channels,
+            }
+        }
+    }
 }

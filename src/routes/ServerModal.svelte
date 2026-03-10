@@ -4,7 +4,7 @@
     import type {IrcServerStatus} from "../types/kirc.svelte";
     import {SvelteMap} from "svelte/reactivity";
     import {servers} from "../stores/stores.svelte";
-    import {ServerStatus, type ServerStatusPayload} from "../types/payloads.svelte";
+    import {type ServerDetail, ServerStatus, type ServerStatusPayload} from "../types/payloads.svelte";
 
     interface Props {
         showServerModal: boolean;
@@ -44,34 +44,12 @@
     const submit = async () => {
         if (!validate()) return;
         connecting = true;
-        serverId = crypto.randomUUID();
 
         let payload = {
-            server_id: serverId,
             ...form
         };
 
         await invoke("connect_server", {payload: payload});
-
-        servers.update((map) => {
-            const newMap = new SvelteMap(map);
-            if (newMap.has(payload.server_id)) return newMap;
-
-            newMap.set(payload.server_id, {
-                id: payload.server_id,
-                name: payload.host,
-                host: payload.host,
-                port: payload.port,
-                tls: payload.tls,
-                nickname: payload.nickname,
-                status: "connecting",
-
-                channels: new SvelteMap(),
-                serverMessages: [],
-            });
-
-            return newMap;
-        });
     }
 
     const cancel = () => {
@@ -81,33 +59,6 @@
             showServerModal = false;
         }
     }
-
-    /*const reconnect = (previousPayload: Payload) => {
-        invoke("connect_server", previousPayload);
-    }*/
-
-    listen<ServerStatusPayload>("kirc:server_status", (e) => {
-        const serverStatusPayload = e.payload;
-
-        console.log("kirc:server_status", serverStatusPayload);
-
-        servers.update((map) => {
-            const newMap = new SvelteMap(map);
-            const server = newMap.get(serverStatusPayload.serverId);
-            if (!server) return newMap;
-
-            server.status = serverStatusPayload.status.toLowerCase() as IrcServerStatus; // TODO: Fix it
-            return newMap;
-        });
-
-        if (serverStatusPayload.status === ServerStatus.Connected) {
-            connecting = false;
-            showServerModal = false;
-        } else if (serverStatusPayload.status === ServerStatus.Failed) {
-            connecting = false;
-            // TODO: 서버 연결 실패
-        }
-    })
 </script>
 
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

@@ -29,3 +29,4 @@ irc = "1.1.0"
 tauri-plugin-log = "2"
 chrono = "0.4.43"
 thiserror = "2"
+uuid = { version = "1.21.0", features = ["serde", "v7"] }

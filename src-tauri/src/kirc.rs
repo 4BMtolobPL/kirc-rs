@@ -1,5 +1,7 @@
 pub(crate) mod commands;
 mod core;
-pub(crate) mod payloads;
+mod emits;
+pub(crate) mod manager;
+pub(crate) mod persistence;
 pub(crate) mod state;
 mod types;

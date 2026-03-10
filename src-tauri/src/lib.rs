@@ -1,5 +1,8 @@
-use crate::kirc::state::IRCClientState;
+use crate::kirc::manager::KircManager;
+use crate::kirc::persistence::KircStateSnapshot;
+use crate::memento::Memento;
 use anyhow::Context;
+use std::sync::Arc;
 use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItem, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Window, WindowEvent};
@@ -7,7 +10,9 @@ use tauri_plugin_log::log;
 use tauri_plugin_log::log::warn;
 
 mod error;
+mod fs;
 mod kirc;
+mod memento;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,13 +49,27 @@ pub fn run() {
                 .build(app)?;
 
             // kirc
-            app.manage(IRCClientState::new());
+            let app_data_dir = app.path().app_data_dir().unwrap();
+            if !app_data_dir.exists() {
+                std::fs::create_dir(&app_data_dir)?;
+            }
+            let config_path = app_data_dir.join("config.json");
+            let snapshot: KircStateSnapshot = fs::load(&config_path).unwrap();
+
+            let mut state = snapshot.restore();
+            state.set_persistence_path(&config_path);
+            let state = Arc::new(state);
+
+            app.manage(KircManager::new(state.clone(), app.handle().clone()));
+            app.manage(state);
 
             Ok(())
         })
         .on_window_event(on_window_event)
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            kirc::commands::init_servers,
+            kirc::commands::get_servers,
             kirc::commands::connect_server,
             kirc::commands::join_channel,
             kirc::commands::send_message,
@@ -84,8 +103,8 @@ fn on_menu_event(app_handle: &AppHandle, event: MenuEvent) {
             let async_app_handle = app_handle.clone();
 
             tauri::async_runtime::spawn(async move {
-                if let Some(state) = async_app_handle.try_state::<IRCClientState>() {
-                    state.shutdown().await;
+                if let Some(manager) = async_app_handle.try_state::<KircManager>() {
+                    manager.shutdown().await;
                 }
 
                 async_app_handle.exit(0);

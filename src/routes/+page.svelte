@@ -1,4 +1,5 @@
 <script lang="ts">
+    import {onMount} from "svelte";
     import {listen} from "@tauri-apps/api/event";
     import {invoke} from "@tauri-apps/api/core";
     import ServerModal from "./ServerModal.svelte";
@@ -16,13 +17,46 @@
         serverUnread,
         updateChannelLock
     } from "../stores/stores.svelte";
-    import {SvelteMap} from "svelte/reactivity";
-    import type {ChannelLockChangedEvent, UiEventPayload} from "../types/payloads.svelte";
+    import {SvelteMap, SvelteSet} from "svelte/reactivity";
+    import type {
+        ChannelLockChangedEvent,
+        ServerDetail,
+        ServerStatusPayload,
+        UiEventPayload
+    } from "../types/payloads.svelte";
+    import type {IrcServerStatus} from "../types/kirc.svelte.ts";
 
     let showChannelModal = $state<boolean>(false);
     let msgInput = $state<string>("");
 
     let showServerModal = $state<boolean>(false);
+
+    onMount(async () => {
+        await invoke("init_servers");
+        const initialServers = await invoke<any[]>("get_servers");
+        servers.update((map) => {
+            const newMap = new SvelteMap(map);
+            initialServers.forEach((s) => {
+                const channelsMap = new SvelteMap();
+                s.channels.forEach((ch: any) => {
+                    channelsMap.set(ch.name, {
+                        name: ch.name,
+                        messages: [],
+                        users: new SvelteSet(),
+                        unread: 0,
+                        locked: ch.locked,
+                    });
+                });
+
+                newMap.set(s.id, {
+                    ...s,
+                    channels: channelsMap,
+                    serverMessages: [],
+                });
+            });
+            return newMap;
+        });
+    });
 
     listen<UiEventPayload>("kirc:event", (event) => {
         const payload: UiEventPayload = event.payload;
@@ -215,6 +249,46 @@
         const payload = event.payload;
         updateChannelLock(payload.serverId, payload.channel, payload.locked)
     });
+
+    listen<ServerDetail>("kirc:server_added", (e) => {
+        const payload = e.payload;
+        console.log("kirc:server_added", payload);
+
+        servers.update((map) => {
+            const newMap = new SvelteMap(map);
+            if (newMap.has(payload.serverId)) return newMap;
+
+            newMap.set(payload.serverId, {
+                id: payload.serverId,
+                name: payload.host,
+                host: payload.host,
+                port: payload.port,
+                tls: payload.tls,
+                nickname: payload.nickname,
+                status: payload.status.toLowerCase() as IrcServerStatus,
+
+                channels: new SvelteMap(),
+                serverMessages: [],
+            });
+
+            return newMap;
+        });
+    });
+
+    listen<ServerStatusPayload>("kirc:server_status", (e) => {
+        const serverStatusPayload = e.payload;
+
+        console.log("kirc:server_status", serverStatusPayload);
+
+        servers.update((map) => {
+            const newMap = new SvelteMap(map);
+            const server = newMap.get(serverStatusPayload.serverId);
+            if (!server) return newMap;
+
+            server.status = serverStatusPayload.status.toLowerCase() as IrcServerStatus; // TODO: Fix it
+            return newMap;
+        });
+    })
 
     const sendMessage = async (): Promise<void> => {
         await invoke("send_message", {
