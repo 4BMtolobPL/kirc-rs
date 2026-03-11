@@ -2,7 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ircStore } from "../stores/irc.svelte";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
-import { type ChatMessage, type IrcServerStatus, MessageType } from "../types/kirc.svelte";
+import {
+  type ChannelId,
+  type ChatMessage,
+  type IrcServerStatus,
+  MessageType,
+  type ServerId,
+} from "../types/kirc.svelte";
 import type { ChannelLockChangedEvent, UiEventPayload } from "../types/payloads.svelte";
 
 export class IrcService {
@@ -11,20 +17,9 @@ export class IrcService {
     const initialServers = await invoke<any[]>("get_servers");
 
     initialServers.forEach((s) => {
-      const channelsMap = new SvelteMap();
-      s.channels.forEach((ch: any) => {
-        channelsMap.set(ch.name, {
-          name: ch.name,
-          messages: [],
-          users: new SvelteSet(),
-          unread: 0,
-          locked: ch.locked,
-        });
-      });
-
       ircStore.servers.set(s.id, {
         ...s,
-        channels: channelsMap,
+        channels: new SvelteMap(),
         serverMessages: [],
       });
     });
@@ -40,61 +35,63 @@ export class IrcService {
       switch (payload.type) {
         case "UserMessage": {
           this.ensureChannel(payload.server_id, payload.channel);
-          this.addMessage(payload.server_id, payload.channel, {
-            type: MessageType.USER,
-            id: crypto.randomUUID(),
-            nickname: payload.nick,
-            content: payload.content,
-            timestamp: payload.timestamp,
-          });
+          this.addMessage(
+            payload.server_id,
+            this.getChannelId(payload.server_id, payload.channel),
+            {
+              type: MessageType.USER,
+              id: crypto.randomUUID(),
+              nickname: payload.nick,
+              content: payload.content,
+              timestamp: payload.timestamp,
+            },
+          );
           break;
         }
         case "Join": {
           this.ensureChannel(payload.server_id, payload.channel);
           const server = ircStore.servers.get(payload.server_id);
           if (server) {
-            const channel = server.channels.get(payload.channel);
+            const channelId = this.getChannelId(payload.server_id, payload.channel);
+            const channel = server.channels.get(channelId);
             if (channel) {
               channel.users.add(payload.nick);
-              channel.messages = [
-                ...channel.messages,
-                {
-                  type: MessageType.SYSTEM,
-                  id: crypto.randomUUID(),
-                  content: `${payload.nick} joined the channel`,
-                  timestamp: Date.now(),
-                },
-              ];
 
               if (payload.nick === server.nickname) {
                 ircStore.currentServerId = payload.server_id;
-                ircStore.currentChannelName = payload.channel;
+                ircStore.currentChannelId = channelId;
               }
             }
+
+            this.addMessage(payload.server_id, channelId, {
+              type: MessageType.SYSTEM,
+              id: crypto.randomUUID(),
+              content: `${payload.nick} joined the channel`,
+              timestamp: Date.now(),
+            });
           }
           break;
         }
         case "Part": {
           const server = ircStore.servers.get(payload.server_id);
+          const channelId = this.getChannelId(payload.server_id, payload.channel);
           if (server) {
             if (payload.nick === server.nickname) {
-              if (ircStore.currentChannelName === payload.channel) {
-                ircStore.currentChannelName = null;
+              if (ircStore.currentChannelId === channelId) {
+                ircStore.currentChannelId = null;
               }
-              server.channels.delete(payload.channel);
+              server.channels.delete(channelId);
             } else {
-              const channel = server.channels.get(payload.channel);
+              const channel = server.channels.get(channelId);
               if (channel) {
                 channel.users.delete(payload.nick);
-                channel.messages = [
-                  ...channel.messages,
-                  {
-                    type: MessageType.SYSTEM,
-                    id: crypto.randomUUID(),
-                    content: `${payload.nick} left the channel`,
-                    timestamp: Date.now(),
-                  },
-                ];
+
+                this.addMessage(payload.server_id, channelId, {
+                  type: MessageType.SYSTEM,
+                  id: crypto.randomUUID(),
+                  content: `${payload.nick} left the channel`,
+                  timestamp: Date.now(),
+                });
               }
             }
           }
@@ -106,15 +103,13 @@ export class IrcService {
             for (const channel of server.channels.values()) {
               if (channel.users.has(payload.nick)) {
                 channel.users.delete(payload.nick);
-                channel.messages = [
-                  ...channel.messages,
-                  {
-                    type: MessageType.SYSTEM,
-                    id: crypto.randomUUID(),
-                    content: `${payload.nick} quit${payload.reason ? ` (${payload.reason})` : ""}`,
-                    timestamp: Date.now(),
-                  },
-                ];
+
+                this.addMessage(payload.server_id, channel.name, {
+                  type: MessageType.SYSTEM,
+                  id: crypto.randomUUID(),
+                  content: `${payload.nick} quit${payload.reason ? ` (${payload.reason})` : ""}`,
+                  timestamp: Date.now(),
+                });
               }
             }
           }
@@ -130,15 +125,13 @@ export class IrcService {
               if (channel.users.has(payload.old_nick)) {
                 channel.users.delete(payload.old_nick);
                 channel.users.add(payload.new_nick);
-                channel.messages = [
-                  ...channel.messages,
-                  {
-                    type: MessageType.SYSTEM,
-                    id: crypto.randomUUID(),
-                    content: `${payload.old_nick} is now known as ${payload.new_nick}`,
-                    timestamp: Date.now(),
-                  },
-                ];
+
+                this.addMessage(payload.server_id, channel.name, {
+                  type: MessageType.SYSTEM,
+                  id: crypto.randomUUID(),
+                  content: `${payload.old_nick} is now known as ${payload.new_nick}`,
+                  timestamp: Date.now(),
+                });
               }
             }
           }
@@ -151,15 +144,13 @@ export class IrcService {
             const channel = server.channels.get(payload.channel);
             if (channel) {
               channel.topic = payload.topic;
-              channel.messages = [
-                ...channel.messages,
-                {
-                  type: MessageType.SYSTEM,
-                  id: crypto.randomUUID(),
-                  content: `Topic set to: ${payload.topic}`,
-                  timestamp: Date.now(),
-                },
-              ];
+
+              this.addMessage(payload.server_id, channel.name, {
+                type: MessageType.SYSTEM,
+                id: crypto.randomUUID(),
+                content: `Topic set to: ${payload.topic}`,
+                timestamp: Date.now(),
+              });
             }
           }
           break;
@@ -220,73 +211,86 @@ export class IrcService {
     });
   }
 
-  ensureChannel(serverId: string, channelName: string) {
+  ensureChannel(serverId: ServerId, channelName: string) {
     const server = ircStore.servers.get(serverId);
     if (!server) return;
+    let channelId = this.getChannelId(serverId, channelName);
 
-    if (!server.channels.has(channelName)) {
-      server.channels.set(channelName, {
+    if (!server.channels.has(channelId)) {
+      server.channels.set(channelId, {
         name: channelName,
-        messages: [],
         users: new SvelteSet(),
         unread: 0,
         locked: false,
       });
     }
+
+    if (!ircStore.messages.has(channelId)) {
+      ircStore.messages.set(channelId, []);
+    }
+
+    return channelId;
   }
 
-  addMessage(serverId: string, channelName: string, message: ChatMessage) {
+  addMessage(serverId: ServerId, channelId: ChannelId, message: ChatMessage) {
     const server = ircStore.servers.get(serverId);
     if (!server) return;
 
-    const channel = server.channels.get(channelName);
+    const channel = server.channels.get(channelId);
     if (!channel) return;
 
-    channel.messages = [...channel.messages, message];
+    const messages = ircStore.messages.get(channelId);
+    if (!messages) return;
+
+    ircStore.messages.set(channelId, [...messages, message]);
 
     const isCurrent =
-      ircStore.currentServerId === serverId && ircStore.currentChannelName === channelName;
+      ircStore.currentServerId === serverId && ircStore.currentChannelId === channelId;
     if (!isCurrent && message.type === MessageType.USER) {
       channel.unread += 1;
     }
   }
 
-  removeUnreadMessage(serverId: string, channelName: string) {
+  removeUnreadMessage(serverId: ServerId, channelId: ChannelId) {
     const server = ircStore.servers.get(serverId);
     if (!server) return;
 
-    const channel = server.channels.get(channelName);
+    const channel = server.channels.get(channelId);
     if (!channel) return;
 
     channel.unread = 0;
   }
 
-  addServerMessage(serverId: string, message: ChatMessage) {
+  addServerMessage(serverId: ServerId, message: ChatMessage) {
     const server = ircStore.servers.get(serverId);
     if (!server) return;
 
     server.serverMessages = [...server.serverMessages, message];
   }
 
-  updateChannelLock(serverId: string, channelName: string, locked: boolean) {
+  updateChannelLock(serverId: ServerId, channelId: ChannelId, locked: boolean) {
     const server = ircStore.servers.get(serverId);
     if (!server) return;
 
-    const channel = server.channels.get(channelName);
+    const channel = server.channels.get(channelId);
     if (!channel) return;
 
     channel.locked = locked;
   }
 
-  setCurrentServer(serverId: string | null) {
+  setCurrentServer(serverId: ServerId | null) {
     ircStore.currentServerId = serverId;
   }
 
-  setCurrentChannel(channelName: string | null) {
-    ircStore.currentChannelName = channelName;
-    if (ircStore.currentServerId && channelName) {
-      this.removeUnreadMessage(ircStore.currentServerId, channelName);
+  setCurrentChannel(channelId: ChannelId | null) {
+    ircStore.currentChannelId = channelId;
+    if (ircStore.currentServerId && ircStore.currentChannelId) {
+      this.removeUnreadMessage(ircStore.currentServerId, ircStore.currentChannelId);
     }
+  }
+
+  getChannelId(serverId: ServerId, channelName: string): ChannelId {
+    return `${serverId}:${channelName}`;
   }
 }
 

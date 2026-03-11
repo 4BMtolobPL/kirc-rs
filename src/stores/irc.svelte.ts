@@ -1,10 +1,11 @@
 import { SvelteMap } from "svelte/reactivity";
-import type { Server } from "../types/kirc.svelte";
+import type { ChannelId, ChatMessage, Server, ServerId } from "../types/kirc.svelte";
 
 export class IrcStore {
-  servers = $state(new SvelteMap<string, Server>());
-  currentServerId = $state<string | null>(null);
-  currentChannelName = $state<string | null>(null);
+  servers = $state(new SvelteMap<ServerId, Server>());
+  messages = $state(new SvelteMap<ChannelId, ChatMessage[]>());
+  currentServerId = $state<ServerId | null>(null);
+  currentChannelId = $state<ChannelId | null>(null);
 
   currentServer = $derived.by(() => {
     if (!this.currentServerId) return null;
@@ -12,8 +13,13 @@ export class IrcStore {
   });
 
   currentChannel = $derived.by(() => {
-    if (!this.currentServerId || !this.currentChannelName) return null;
-    return this.servers.get(this.currentServerId)?.channels.get(this.currentChannelName) ?? null;
+    if (!this.currentServerId || !this.currentChannelId) return null;
+    return this.servers.get(this.currentServerId)?.channels.get(this.currentChannelId) ?? null;
+  });
+
+  currentMessage = $derived.by(() => {
+    if (!this.currentServerId || !this.currentChannelId) return null;
+    return this.messages.get(this.currentChannelId) ?? null;
   });
 
   currentServerNickname = $derived.by(() => {

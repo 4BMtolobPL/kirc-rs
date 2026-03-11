@@ -6,6 +6,7 @@
     import MessageView from "./MessageView.svelte";
     import {ircStore} from "../stores/irc.svelte";
     import {ircService} from "../services/ircService";
+    import type {ServerId} from "../types/kirc.svelte.ts";
 
     let showChannelModal = $state<boolean>(false);
     let msgInput = $state<string>("");
@@ -16,20 +17,22 @@
         visible: boolean,
         x: number,
         y: number,
-        serverId: string | null,
-        channelName: string | null
+        serverId: ServerId | null,
+        channelId: string | null,
+        channelName: string | null,
     }>({
         visible: false,
         x: 0,
         y: 0,
         serverId: null,
+        channelId: null,
         channelName: null,
     });
     let serverContextMenu = $state<{
         visible: boolean,
         x: number,
         y: number,
-        serverId: string | null
+        serverId: ServerId | null
     }>({
         visible: false,
         x: 0,
@@ -46,24 +49,24 @@
     });
 
     const sendMessage = async (): Promise<void> => {
-        if (!ircStore.currentServerId || !ircStore.currentChannelName) return;
+        if (!ircStore.currentServerId || !ircStore.currentChannel) return;
 
         await invoke("send_message", {
             serverId: ircStore.currentServerId,
-            target: ircStore.currentChannelName,
+            target: ircStore.currentChannel.name,
             message: msgInput
         });
 
         msgInput = "";
     }
 
-    const selectServer = (serverId: string) => {
+    const selectServer = (serverId: ServerId) => {
         ircService.setCurrentServer(serverId);
         ircService.setCurrentChannel(null);
     }
 
-    const selectChannel = (serverId: string, channelName: string) => {
-        ircService.setCurrentChannel(channelName);
+    const selectChannel = (serverId: ServerId, channelId: string) => {
+        ircService.setCurrentChannel(channelId);
     }
 
     const openChannelModal = () => {
@@ -76,7 +79,7 @@
 
     const toggleLock = () => {
         const serverId = ircStore.currentServerId;
-        const channel = ircStore.currentChannelName;
+        const channel = ircStore.currentChannelId;
 
         if (ircStore.isLocked) {
             invoke("unlock_channel", {payload: {serverId, channel}});
@@ -141,7 +144,7 @@
                     <!-- Channel List -->
                     {#if server.id === ircStore.currentServerId}
                         <ul class="ml-4 mt-1 space-y-1 text-sm">
-                            {#each server.channels as [channelName, channel] (channelName)}
+                            {#each server.channels as [channelId, channel] (channelId)}
                                 <li oncontextmenu={(e) => {
                                     e.preventDefault();
                                     channelContextMenu = {
@@ -149,13 +152,14 @@
                                         x: e.clientX,
                                         y: e.clientY,
                                         serverId: serverId,
-                                        channelName: channelName
+                                        channelId: channelId,
+                                        channelName: channel.name,
                                     };
                                 }}>
-                                    <button class="w-full cursor-pointer rounded px-2 py-1 {channelName === ircStore.currentChannelName ? 'bg-neutral-300 dark:bg-neutral-600' : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'}"
-                                            onclick={() => selectChannel(serverId, channelName)}>
+                                    <button class="w-full cursor-pointer rounded px-2 py-1 {channelId === ircStore.currentChannelId ? 'bg-neutral-300 dark:bg-neutral-600' : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'}"
+                                            onclick={() => selectChannel(serverId, channelId)}>
                                         <span class="flex items-center gap-1">
-                                            {channelName}
+                                            {channel.name}
                                             {#if channel.unread > 0}
                                                 <span class="rounded-full bg-red-500 px-1.5 text-xs text-white">
                                                     {channel.unread > 99 ? '99+' : channel.unread}

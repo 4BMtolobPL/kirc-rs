@@ -2,6 +2,7 @@
     import {ircStore} from "../stores/irc.svelte";
     import {MessageType} from "../types/kirc.svelte";
 
+    // oxlint-disable-next-line no-unassigned-vars
     let container: HTMLDivElement;
     let autoScroll = true;
 
@@ -18,7 +19,7 @@
 
 
 <div bind:this={container} class="flex-1 overflow-y-auto p-3" onscroll={onScroll}>
-    {#each ircStore.currentChannel?.messages ?? [] as msg}
+    {#each ircStore.currentMessage ?? [] as msg}
         {#if msg.type === MessageType.USER}
             <div class="mb-1">
                 <span class="font-semibold">{(ircStore.currentServerNickname && ircStore.currentServerNickname === msg.nickname) ? `< ${msg.nickname}>` : `<@${msg.nickname}>`}</span>

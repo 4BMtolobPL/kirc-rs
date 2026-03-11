@@ -1,9 +1,5 @@
 <script lang="ts">
     import {invoke} from "@tauri-apps/api/core";
-    import {listen} from "@tauri-apps/api/event";
-    import type {IrcServerStatus} from "../types/kirc.svelte";
-    import {SvelteMap} from "svelte/reactivity";
-    import {type ServerDetail, ServerStatus, type ServerStatusPayload} from "../types/payloads.svelte";
 
     interface Props {
         showServerModal: boolean;

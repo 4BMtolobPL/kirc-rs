@@ -1,5 +1,8 @@
 import type { SvelteMap, SvelteSet } from "svelte/reactivity";
 
+export type ServerId = string;
+export type ChannelId = string;
+
 export enum MessageType {
   USER,
   SYSTEM,
@@ -23,14 +26,13 @@ export type ChatMessage =
 export type Channel = {
   name: string;
   topic?: string;
-  messages: ChatMessage[];
   users: SvelteSet<string>;
   unread: number;
   locked: boolean;
 };
 
 export type Server = {
-  id: string;
+  id: ServerId;
   name: string;
   host: string;
   port: number;
@@ -38,7 +40,7 @@ export type Server = {
   nickname: string;
   status: IrcServerStatus;
 
-  channels: SvelteMap<string, Channel>;
+  channels: SvelteMap<ChannelId, Channel>;
   serverMessages: ChatMessage[];
 };
 
