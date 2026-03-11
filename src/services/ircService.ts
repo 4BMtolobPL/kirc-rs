@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ircStore } from "../stores/irc.svelte";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
-import type { ChatMessage, IrcServerStatus } from "../types/kirc.svelte";
+import { type ChatMessage, type IrcServerStatus, MessageType } from "../types/kirc.svelte";
 import type { ChannelLockChangedEvent, UiEventPayload } from "../types/payloads.svelte";
 
 export class IrcService {
@@ -41,7 +41,7 @@ export class IrcService {
         case "UserMessage": {
           this.ensureChannel(payload.server_id, payload.channel);
           this.addMessage(payload.server_id, payload.channel, {
-            type: "user",
+            type: MessageType.USER,
             id: crypto.randomUUID(),
             nickname: payload.nick,
             content: payload.content,
@@ -59,7 +59,7 @@ export class IrcService {
               channel.messages = [
                 ...channel.messages,
                 {
-                  type: "system",
+                  type: MessageType.SYSTEM,
                   id: crypto.randomUUID(),
                   content: `${payload.nick} joined the channel`,
                   timestamp: Date.now(),
@@ -89,7 +89,7 @@ export class IrcService {
                 channel.messages = [
                   ...channel.messages,
                   {
-                    type: "system",
+                    type: MessageType.SYSTEM,
                     id: crypto.randomUUID(),
                     content: `${payload.nick} left the channel`,
                     timestamp: Date.now(),
@@ -109,7 +109,7 @@ export class IrcService {
                 channel.messages = [
                   ...channel.messages,
                   {
-                    type: "system",
+                    type: MessageType.SYSTEM,
                     id: crypto.randomUUID(),
                     content: `${payload.nick} quit${payload.reason ? ` (${payload.reason})` : ""}`,
                     timestamp: Date.now(),
@@ -133,7 +133,7 @@ export class IrcService {
                 channel.messages = [
                   ...channel.messages,
                   {
-                    type: "system",
+                    type: MessageType.SYSTEM,
                     id: crypto.randomUUID(),
                     content: `${payload.old_nick} is now known as ${payload.new_nick}`,
                     timestamp: Date.now(),
@@ -154,7 +154,7 @@ export class IrcService {
               channel.messages = [
                 ...channel.messages,
                 {
-                  type: "system",
+                  type: MessageType.SYSTEM,
                   id: crypto.randomUUID(),
                   content: `Topic set to: ${payload.topic}`,
                   timestamp: Date.now(),
@@ -166,7 +166,7 @@ export class IrcService {
         }
         case "Error": {
           this.addServerMessage(payload.server_id, {
-            type: "system",
+            type: MessageType.SYSTEM,
             id: crypto.randomUUID(),
             content: `Error: ${payload.message}`,
             timestamp: Date.now(),
@@ -246,7 +246,7 @@ export class IrcService {
 
     const isCurrent =
       ircStore.currentServerId === serverId && ircStore.currentChannelName === channelName;
-    if (!isCurrent && message.type === "user") {
+    if (!isCurrent && message.type === MessageType.USER) {
       channel.unread += 1;
     }
   }

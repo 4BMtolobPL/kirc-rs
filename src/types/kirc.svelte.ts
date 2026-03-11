@@ -1,15 +1,20 @@
 import type { SvelteMap, SvelteSet } from "svelte/reactivity";
 
+export enum MessageType {
+  USER,
+  SYSTEM,
+}
+
 export type ChatMessage =
   | {
-      type: "user";
+      type: MessageType.USER;
       id: string;
       nickname: string;
       content: string;
       timestamp: number;
     }
   | {
-      type: "system";
+      type: MessageType.SYSTEM;
       id: string;
       content: string;
       timestamp: number;
