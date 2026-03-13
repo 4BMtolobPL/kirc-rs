@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use tauri::AppHandle;
-use tauri_plugin_log::log::debug;
+use tracing::{debug, info};
 
 pub(crate) struct KircManager {
     kirc_state: Arc<KircState>,
@@ -44,10 +44,10 @@ impl KircManager {
     }
 
     fn run_server(&self, server_id: ServerId) -> anyhow::Result<()> {
-        debug!("Starting server: {}", server_id);
         if let Some(server) = self.kirc_state.get_server(server_id) {
             let config = server.config();
 
+            info!(server_id = %server_id, "Spawn server actor");
             let handle = tokio::spawn(server_actor(server_id, config, self.app_handle.clone()));
 
             server.transition_to_connecting(handle);
@@ -122,7 +122,7 @@ impl KircManager {
 
     pub(in crate::kirc) fn process_auto_connect(&self) {
         let server_ids: Vec<ServerId> = self.kirc_state.get_all_servers().keys().cloned().collect();
-        debug!("Auto-connecting servers: {:?}", server_ids);
+        debug!(server_id = ?server_ids, "Auto-connecting servers");
         for server_id in server_ids {
             let _ = self.run_server(server_id);
         }

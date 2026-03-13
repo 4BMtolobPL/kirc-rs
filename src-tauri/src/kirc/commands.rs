@@ -8,7 +8,7 @@ use crate::kirc::types::ServerId;
 use anyhow::Context;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use tauri_plugin_log::log::info;
+use tracing::info;
 
 #[tauri::command]
 pub(crate) async fn init_servers(manager: State<'_, KircManager>) -> Result<(), MyCustomError> {

@@ -6,7 +6,6 @@ use crate::memento::{Memento, Originator};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri_plugin_log::log::trace;
 use uuid::Uuid;
 
 pub(crate) struct KircState {

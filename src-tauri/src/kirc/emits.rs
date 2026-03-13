@@ -4,7 +4,7 @@ use crate::kirc::emits::payload::{
 };
 use crate::kirc::types::{ServerId, ServerStatus};
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_log::log::trace;
+use tracing::trace;
 
 pub(super) fn emit_server_added(
     app_handle: &AppHandle,
