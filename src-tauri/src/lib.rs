@@ -45,7 +45,11 @@ pub fn run() {
                 .build(app)?;
 
             // kirc
-            let app_data_dir = app.path().app_data_dir().unwrap();
+            let mut app_data_dir = app.path().app_data_dir().unwrap();
+            if cfg!(debug_assertions) {
+                app_data_dir.push("dev");
+            }
+
             if !app_data_dir.exists() {
                 std::fs::create_dir(&app_data_dir)?;
             }
