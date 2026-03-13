@@ -6,15 +6,16 @@ use futures::prelude::*;
 use irc::client::prelude::*;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_log::log::{debug, error, trace};
+use tracing::{debug, error, instrument, trace};
 
+#[instrument(skip(app_handle))]
 pub(super) async fn server_actor(
     server_id: ServerId,
     server_config: ServerConfig,
     app_handle: AppHandle,
 ) {
     // actor에선 error를 ?로 전파하지 않고, 소비/로깅만 하거나 이벤트로 전파
-    debug!("Starting server actor: {}", server_id);
+    debug!(server_id = %server_id, "Starting server actor");
 
     let config = Config {
         server: Some(server_config.server().to_string()),
@@ -56,20 +57,18 @@ pub(super) async fn server_actor(
 
     let _ = emit_server_status(&app_handle, server_id, ServerStatus::Registering);
 
-    trace!("Start server({server_id}) actor loop");
+    trace!(server_id = %server_id, "Start server actor loop");
     loop {
         tokio::select! {
             Some(result) = stream.next() => {
                 match result {
                     Ok(message) => {
-                        trace!("Stream get: {message}");
                         let _ = handle_message(server_id, message, &app_handle);
                     }
                     Err(_) => break,
                 }
             }
             Some(cmd) = rx.recv() => {
-                trace!("rx recieve: {cmd}");
                 match cmd {
                     ServerCommand::Join(ch) => {
                         if let Err(e) = client.send_join(&ch) {
@@ -83,7 +82,6 @@ pub(super) async fn server_actor(
 
                         match Message::with_tags(None, Some(client.current_nickname()), "PRIVMSG", vec![&target, &message]) {
                                 Ok(msg) => {
-                                    trace!("Create echo: {:?}", msg);
                                     handle_message(server_id, msg, &app_handle).expect("Failed to handle message");
                                 }
                                 Err(_) => {
@@ -126,16 +124,17 @@ fn fail_state(server_id: ServerId, app_handle: AppHandle, message: String) {
     let _ = emit_server_status(&app_handle, server_id, ServerStatus::Failed);
 }
 
+#[instrument(skip(app_handle, message), level = "trace")]
 fn handle_message(
     server_id: ServerId,
     message: Message,
     app_handle: &AppHandle,
 ) -> anyhow::Result<()> {
+    // trace!(message = %format!("{message}").trim_end());
     let source_nickname = message.source_nickname().unwrap_or_else(|| "").to_string();
 
     match message.command {
         Command::PRIVMSG(target, content) => {
-            trace!("PRIVMSG | from: {source_nickname}, target: {target}, content: {content}");
             emit_ui_event(app_handle)
                 .user_message(server_id, target, source_nickname, content)
                 .emit()?;
@@ -169,7 +168,7 @@ fn handle_message(
             emit_ui_event(app_handle).error(server_id, message).emit()?;
         }
         Command::Response(Response::RPL_WELCOME, _) => {
-            trace!("handle_message RPL_WELCOME");
+            trace!("Response RPL_WELCOME");
             {
                 let state = app_handle.state::<Arc<KircState>>();
                 if let Some(server) = state.get_server(server_id) {

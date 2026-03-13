@@ -10,6 +10,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
+use tracing::debug;
 
 #[derive(Default)]
 pub(in crate::kirc) enum ServerRuntime {
@@ -52,6 +53,7 @@ impl ServerRuntime {
         match self {
             ServerRuntime::Connected { tx, handle } | ServerRuntime::Registering { tx, handle } => {
                 // 1. QUIT 전송
+                debug!(command = %ServerCommand::Quit, "tx send");
                 let _ = tx.send(ServerCommand::Quit);
 
                 // 2. 정상 종료 대기 (timeout optional)
@@ -154,6 +156,7 @@ impl ServerState {
         let guard = self.runtime.lock().unwrap();
         match &*guard {
             ServerRuntime::Connected { tx, .. } | ServerRuntime::Registering { tx, .. } => {
+                debug!(command = %cmd, "tx send");
                 tx.send(cmd).map_err(|e| anyhow!("Failed to send: {}", e))
             }
             _ => Err(anyhow!("Server not connected")),
@@ -195,6 +198,7 @@ impl ServerState {
         let mut guard = self.runtime.lock().unwrap();
         match std::mem::take(&mut *guard) {
             ServerRuntime::Registering { tx, handle } | ServerRuntime::Connected { tx, handle } => {
+                debug!(command = %ServerCommand::Quit, "tx send");
                 let _ = tx.send(ServerCommand::Quit);
                 *guard = ServerRuntime::Disconnecting { handle };
             }

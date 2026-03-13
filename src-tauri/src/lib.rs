@@ -1,29 +1,25 @@
 use crate::kirc::manager::KircManager;
 use crate::kirc::persistence::KircStateSnapshot;
+use crate::logging::init_logging;
 use crate::memento::Memento;
 use anyhow::Context;
 use std::sync::Arc;
 use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItem, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Window, WindowEvent};
-use tauri_plugin_log::log;
-use tauri_plugin_log::log::warn;
+use tracing::warn;
 
 mod error;
 mod fs;
 mod kirc;
+mod logging;
 mod memento;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::init_logging();
+
     tauri::Builder::default()
-        .plugin(
-            // Logging
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Debug)
-                .level_for("irc_client_lib", log::LevelFilter::Trace)
-                .build(),
-        )
         .setup(|app| {
             // Menu
             let file_menu = SubmenuBuilder::new(app, "File")

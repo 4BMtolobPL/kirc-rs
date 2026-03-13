@@ -3,13 +3,13 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
-use tauri_plugin_log::log::debug;
+use tracing::debug;
 
 pub(crate) fn load<T, A>(path: &Path) -> anyhow::Result<T>
 where
     T: Memento<A> + DeserializeOwned + Default,
 {
-    debug!("loading file {}", path.display());
+    debug!(path = %path.display(), "Load");
     if !path.exists() {
         return Ok(T::default());
     }
@@ -23,7 +23,7 @@ pub(crate) fn save<T, A>(path: &Path, snapshot: T) -> anyhow::Result<()>
 where
     T: Memento<A> + Serialize,
 {
-    debug!("saving file {}", path.display());
+    debug!(path = %path.display(), "Save");
     let tmp_path = path.with_extension("tmp");
     let data = serde_json::to_string(&snapshot)?;
 
