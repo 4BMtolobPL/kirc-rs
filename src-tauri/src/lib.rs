@@ -51,7 +51,7 @@ pub fn run() {
             }
 
             if !app_data_dir.exists() {
-                std::fs::create_dir(&app_data_dir)?;
+                std::fs::create_dir_all(&app_data_dir)?;
             }
             let config_path = app_data_dir.join("config.json");
             let snapshot: KircStateSnapshot = fs::load(&config_path).unwrap();
