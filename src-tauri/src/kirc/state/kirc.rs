@@ -87,6 +87,61 @@ impl FromIterator<ServerStateSnapshot> for KircState {
 impl Originator<KircStateSnapshot> for KircState {
     fn snapshot(&self) -> KircStateSnapshot {
         let servers = self.servers.lock().unwrap();
-        KircStateSnapshot::from_iter(servers.iter().map(|(_, state)| state.snapshot()))
+        KircStateSnapshot::from_iter(servers.values().map(|state| state.snapshot()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn mock_config() -> ServerConfig {
+        ServerConfig::new("irc.test.net".to_string(), 6667, false, "nick".to_string())
+    }
+
+    #[test]
+    fn test_kirc_state_new() {
+        let state = KircState::new();
+        assert!(state.get_all_servers().is_empty());
+    }
+
+    #[test]
+    fn test_add_server_fails_without_persistence_path() {
+        let state = KircState::new();
+        let config = mock_config();
+        let result = state.add_server(config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_add_server_success() {
+        let mut state = KircState::new();
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        state.set_persistence_path(&path);
+
+        let config = mock_config();
+        let server_id = state.add_server(config).unwrap();
+
+        assert!(state.get_server(server_id).is_some());
+        assert_eq!(state.get_all_servers().len(), 1);
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_drain_runtimes() {
+        let mut state = KircState::new();
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        state.set_persistence_path(&path);
+
+        state.add_server(mock_config()).unwrap();
+        state.add_server(mock_config()).unwrap();
+
+        assert_eq!(state.get_all_servers().len(), 2);
+        let runtimes = state.drain_runtimes();
+        assert_eq!(runtimes.len(), 2);
+        assert!(state.get_all_servers().is_empty());
     }
 }

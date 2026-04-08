@@ -131,7 +131,7 @@ fn handle_message(
     app_handle: &AppHandle,
 ) -> anyhow::Result<()> {
     // trace!(message = %format!("{message}").trim_end());
-    let source_nickname = message.source_nickname().unwrap_or_else(|| "").to_string();
+    let source_nickname = message.source_nickname().unwrap_or("").to_string();
 
     match message.command {
         Command::PRIVMSG(target, content) => {
@@ -139,7 +139,7 @@ fn handle_message(
                 .user_message(server_id, target, source_nickname, content)
                 .emit()?;
         }
-        Command::JOIN(chanlist, chankey, real_name) => {
+        Command::JOIN(chanlist, _chankey, _real_name) => {
             emit_ui_event(app_handle)
                 .join(server_id, chanlist, source_nickname)
                 .emit()?;
@@ -175,7 +175,7 @@ fn handle_message(
                     server.transition_to_connected();
 
                     // 기존 채널이 존재하면 연결
-                    for (channel_name, channel_state) in server.channels() {
+                    for (channel_name, _channel_state) in server.channels() {
                         server.send_command(ServerCommand::Join(channel_name))?;
                     }
                 }

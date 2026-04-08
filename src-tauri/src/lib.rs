@@ -1,6 +1,5 @@
 use crate::kirc::manager::KircManager;
 use crate::kirc::persistence::KircStateSnapshot;
-use crate::logging::init_logging;
 use crate::memento::Memento;
 use anyhow::Context;
 use std::sync::Arc;

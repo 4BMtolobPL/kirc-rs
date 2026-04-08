@@ -34,3 +34,23 @@ impl ServerConfig {
         &self.nickname
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_server_config_new() {
+        let server = "irc.libera.chat".to_string();
+        let port = 6697;
+        let use_tls = true;
+        let nickname = "test_nick".to_string();
+
+        let config = ServerConfig::new(server.clone(), port, use_tls, nickname.clone());
+
+        assert_eq!(config.server(), server);
+        assert_eq!(config.port(), port);
+        assert_eq!(config.use_tls(), use_tls);
+        assert_eq!(config.nickname(), nickname);
+    }
+}

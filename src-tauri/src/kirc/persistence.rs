@@ -25,7 +25,7 @@ impl Memento<ServerState> for ServerStateSnapshot {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub(crate) struct KircStateSnapshot {
     servers: Vec<ServerStateSnapshot>,
 }
@@ -47,13 +47,5 @@ impl FromIterator<ServerStateSnapshot> for KircStateSnapshot {
 impl Memento<KircState> for KircStateSnapshot {
     fn restore(self) -> KircState {
         KircState::from_iter(self.servers)
-    }
-}
-
-impl Default for KircStateSnapshot {
-    fn default() -> Self {
-        Self {
-            servers: Vec::new(),
-        }
     }
 }

@@ -8,7 +8,7 @@ pub(super) type ServerId = Uuid;
 pub(super) type ChannelId = String;
 
 /// 프론트 전달용 State
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub(super) enum ServerStatus {
     Connecting,
     Connected,

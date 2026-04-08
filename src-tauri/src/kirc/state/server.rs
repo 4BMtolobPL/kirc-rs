@@ -229,3 +229,68 @@ impl Originator<ServerStateSnapshot> for ServerState {
         ServerStateSnapshot::new(self.config(), self.channels())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kirc::types::server::ServerConfig;
+    use tokio::sync::mpsc;
+
+    fn mock_config() -> ServerConfig {
+        ServerConfig::new("irc.test.net".to_string(), 6667, false, "nick".to_string())
+    }
+
+    #[test]
+    fn test_server_state_new() {
+        let config = mock_config();
+        let state = ServerState::new(ServerRuntime::Disconnected, config);
+
+        assert_eq!(state.status(), ServerStatus::Disconnected);
+        assert!(state.channels().is_empty());
+    }
+
+    #[test]
+    fn test_channel_management() {
+        let config = mock_config();
+        let state = ServerState::new(ServerRuntime::Disconnected, config);
+
+        state.insert_channel("#test", false);
+        assert!(state.channels().contains_key("#test"));
+        assert!(!state.is_channel_locked("#test"));
+
+        state.set_channel_locked("#test", true);
+        assert!(state.is_channel_locked("#test"));
+
+        let removed = state.remove_channel("#test");
+        assert!(removed.is_some());
+        assert!(state.channels().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_transitions() {
+        let config = mock_config();
+        let state = ServerState::new(ServerRuntime::Disconnected, config);
+
+        // Transition to connecting (from Disconnected)
+        let handle = tokio::spawn(async {});
+        state.transition_to_connecting(handle);
+        assert_eq!(state.status(), ServerStatus::Connecting);
+
+        // Transition to registering (from Connecting)
+        let (tx, _rx) = mpsc::unbounded_channel();
+        state.transition_to_registering(tx.clone());
+        assert_eq!(state.status(), ServerStatus::Registering);
+
+        // Transition to connected (from Registering)
+        state.transition_to_connected();
+        assert_eq!(state.status(), ServerStatus::Connected);
+
+        // Transition to failed (from Connected)
+        state.transition_to_failed("test error".to_string());
+        assert_eq!(state.status(), ServerStatus::Failed);
+
+        // Transition to disconnected
+        state.transition_to_disconnected();
+        assert_eq!(state.status(), ServerStatus::Disconnected);
+    }
+}
