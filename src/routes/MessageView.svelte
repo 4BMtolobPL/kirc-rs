@@ -4,14 +4,14 @@
 
     // oxlint-disable-next-line no-unassigned-vars
     let container: HTMLDivElement;
-    let autoScroll = true;
+    let autoScroll = $state<boolean>(true);
 
     const onScroll = () => {
         autoScroll = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
     }
 
     $effect(() => {
-        if (autoScroll) {
+        if (autoScroll && ircStore.currentMessage) {
             container.scrollTop = container.scrollHeight;
         }
     });
