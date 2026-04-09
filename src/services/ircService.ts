@@ -6,6 +6,7 @@ import {
   type ChannelId,
   type ChatMessage,
   type IrcServerStatus,
+  type MessageId,
   MessageType,
   type ServerId,
 } from "../types/kirc.svelte";
@@ -263,6 +264,16 @@ export class IrcService {
       ircStore.channels.set(channelId, {
         ...channel,
         locked: locked,
+      });
+    }
+  }
+
+  updateChannelLastReadMessageId(channelId: ChannelId, lastReadMessageId?: MessageId) {
+    const channel = ircStore.channels.get(channelId);
+    if (channel) {
+      ircStore.channels.set(channelId, {
+        ...channel,
+        lastReadMessageId: lastReadMessageId,
       });
     }
   }

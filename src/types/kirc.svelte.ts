@@ -2,6 +2,7 @@ import type { SvelteSet } from "svelte/reactivity";
 
 export type ServerId = string;
 export type ChannelId = string;
+export type MessageId = string;
 
 export enum MessageType {
   USER,
@@ -11,14 +12,14 @@ export enum MessageType {
 export type ChatMessage =
   | {
       type: MessageType.USER;
-      id: string;
+      id: MessageId;
       nickname: string;
       content: string;
       timestamp: number;
     }
   | {
       type: MessageType.SYSTEM;
-      id: string;
+      id: MessageId;
       content: string;
       timestamp: number;
     };
@@ -30,6 +31,7 @@ export type Channel = {
   users: SvelteSet<string>;
   unread: number;
   locked: boolean;
+  lastReadMessageId?: MessageId;
 };
 
 export type Server = {
