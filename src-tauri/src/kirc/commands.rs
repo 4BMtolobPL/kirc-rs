@@ -31,16 +31,18 @@ pub(crate) fn get_servers(
             .map(|(name, s)| ChannelInfo::new(&name, s.locked))
             .collect();
 
-        infos.push(ServerInfo::new(
-            id,
-            config.server(),
-            config.server(),
-            config.port(),
-            config.use_tls(),
-            config.nickname(),
-            server_state.status(),
-            channel_infos,
-        ));
+        let server_info = ServerInfo::builder()
+            .id(id)
+            .name(config.server())
+            .host(config.server())
+            .port(config.port())
+            .tls(config.use_tls())
+            .nickname(config.nickname())
+            .status(server_state.status())
+            .channels(channel_infos)
+            .build();
+
+        infos.push(server_info);
     }
 
     Ok(infos)
@@ -256,26 +258,91 @@ mod payload {
     }
 
     impl ServerInfo {
-        pub(super) fn new(
-            id: ServerId,
-            name: &str,
-            host: &str,
-            port: u16,
-            tls: bool,
-            nickname: &str,
-            status: ServerStatus,
-            channels: Vec<ChannelInfo>,
-        ) -> Self {
-            Self {
-                id,
-                name: name.to_string(),
-                host: host.to_string(),
-                port,
-                tls,
-                nickname: nickname.to_string(),
-                status,
-                channels,
+        pub(super) fn builder() -> ServerInfoBuilder {
+            ServerInfoBuilder::new()
+        }
+    }
+
+    #[derive(Default)]
+    pub(super) struct ServerInfoBuilder {
+        id: Option<ServerId>,
+        name: Option<String>,
+        host: Option<String>,
+        port: Option<u16>,
+        tls: Option<bool>,
+        nickname: Option<String>,
+        status: Option<ServerStatus>,
+        channels: Option<Vec<ChannelInfo>>,
+    }
+
+    impl ServerInfoBuilder {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        pub(super) fn build(&self) -> ServerInfo {
+            if self.id.is_none()
+                || self.name.is_none()
+                || self.host.is_none()
+                || self.port.is_none()
+                || self.tls.is_none()
+                || self.nickname.is_none()
+                || self.status.is_none()
+                || self.channels.is_none()
+            {
+                panic!("ServerInfoBuilder: build() called with incomplete data");
             }
+
+            ServerInfo {
+                id: self.id.unwrap(),
+                name: self.name.clone().unwrap(),
+                host: self.host.clone().unwrap(),
+                port: self.port.unwrap(),
+                tls: self.tls.unwrap(),
+                nickname: self.nickname.clone().unwrap(),
+                status: self.status.clone().unwrap(),
+                channels: self.channels.clone().unwrap(),
+            }
+        }
+
+        pub(super) fn id(&mut self, id: ServerId) -> &mut Self {
+            self.id = Some(id);
+            self
+        }
+
+        pub(super) fn name(&mut self, name: &str) -> &mut Self {
+            self.name = Some(name.to_string());
+            self
+        }
+
+        pub(super) fn host(&mut self, host: &str) -> &mut Self {
+            self.host = Some(host.to_string());
+            self
+        }
+
+        pub(super) fn port(&mut self, port: u16) -> &mut Self {
+            self.port = Some(port);
+            self
+        }
+
+        pub(super) fn tls(&mut self, tls: bool) -> &mut Self {
+            self.tls = Some(tls);
+            self
+        }
+
+        pub(super) fn nickname(&mut self, nickname: &str) -> &mut Self {
+            self.nickname = Some(nickname.to_string());
+            self
+        }
+
+        pub(super) fn status(&mut self, status: ServerStatus) -> &mut Self {
+            self.status = Some(status);
+            self
+        }
+
+        pub(super) fn channels(&mut self, channels: Vec<ChannelInfo>) -> &mut Self {
+            self.channels = Some(channels);
+            self
         }
     }
 }
