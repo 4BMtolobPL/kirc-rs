@@ -48,7 +48,9 @@
         await ircService.initialize();
     });
 
-    const sendMessage = async (): Promise<void> => {
+    const sendMessage = async (e: Event): Promise<void> => {
+        e.preventDefault();
+
         if (!ircStore.currentServerId || !ircStore.currentChannel) return;
 
         if (msgInput.trim() === "") return;
