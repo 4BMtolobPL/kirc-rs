@@ -51,6 +51,8 @@
     const sendMessage = async (): Promise<void> => {
         if (!ircStore.currentServerId || !ircStore.currentChannel) return;
 
+        if (msgInput.trim() === "") return;
+
         await invoke("send_message", {
             serverId: ircStore.currentServerId,
             target: ircStore.currentChannel.name,
