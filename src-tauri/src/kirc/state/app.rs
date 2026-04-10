@@ -1,4 +1,4 @@
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub(in crate::kirc) enum AppState {
     Running,
     ShuttingDown,
@@ -21,5 +21,22 @@ impl AppState {
             2 => Some(Self::Terminated),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_state_conversions() {
+        assert_eq!(AppState::Running.as_u8(), 0);
+        assert_eq!(AppState::ShuttingDown.as_u8(), 1);
+        assert_eq!(AppState::Terminated.as_u8(), 2);
+
+        assert_eq!(AppState::from_u8(0), Some(AppState::Running));
+        assert_eq!(AppState::from_u8(1), Some(AppState::ShuttingDown));
+        assert_eq!(AppState::from_u8(2), Some(AppState::Terminated));
+        assert_eq!(AppState::from_u8(3), None);
     }
 }

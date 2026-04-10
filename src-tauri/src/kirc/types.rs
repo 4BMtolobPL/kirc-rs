@@ -35,3 +35,28 @@ impl Display for ServerCommand {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_server_command_display() {
+        assert_eq!(format!("{}", ServerCommand::Join("#test".to_string())), "Join, #test");
+        assert_eq!(
+            format!(
+                "{}",
+                ServerCommand::Privmsg {
+                    target: "#test".to_string(),
+                    message: "hello".to_string()
+                }
+            ),
+            "Privmsg, #test, hello"
+        );
+        assert_eq!(
+            format!("{}", ServerCommand::Part { channel_name: "#test".to_string() }),
+            "Part, #test"
+        );
+        assert_eq!(format!("{}", ServerCommand::Quit), "Quit");
+    }
+}

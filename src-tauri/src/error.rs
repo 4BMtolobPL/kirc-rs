@@ -17,3 +17,15 @@ impl Serialize for MyCustomError {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_serialization() {
+        let err = MyCustomError::Anyhow(anyhow::anyhow!("test error"));
+        let serialized = serde_json::to_string(&err).unwrap();
+        assert_eq!(serialized, "\"test error\"");
+    }
+}
