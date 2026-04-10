@@ -14,13 +14,6 @@ pub(crate) struct KircState {
 }
 
 impl KircState {
-    pub(crate) fn new() -> Self {
-        Self {
-            servers: Mutex::new(HashMap::new()),
-            persistence_path: None,
-        }
-    }
-
     pub(crate) fn set_persistence_path(&mut self, path: &std::path::Path) {
         self.persistence_path = Some(path.to_path_buf());
     }
@@ -87,6 +80,6 @@ impl FromIterator<ServerStateSnapshot> for KircState {
 impl Originator<KircStateSnapshot> for KircState {
     fn snapshot(&self) -> KircStateSnapshot {
         let servers = self.servers.lock().unwrap();
-        KircStateSnapshot::from_iter(servers.iter().map(|(_, state)| state.snapshot()))
+        KircStateSnapshot::from_iter(servers.values().map(|state| state.snapshot()))
     }
 }
