@@ -7,11 +7,13 @@
     import {ircStore} from "../stores/irc.svelte";
     import {ircService} from "../services/ircService";
     import type {ChannelId, ServerId} from "../types/kirc.svelte.ts";
+    import ChangeNicknameModal from "./ChangeNicknameModal.svelte";
 
     let showChannelModal = $state<boolean>(false);
     let msgInput = $state<string>("");
 
     let showServerModal = $state<boolean>(false);
+    let showChangeNickModal = $state<boolean>(false)
 
     let channelContextMenu = $state<{
         visible: boolean,
@@ -105,6 +107,10 @@
 
     const disconnectServer = () => {
         invoke("disconnect_server", {serverId: serverContextMenu.serverId});
+    }
+
+    const changeNickname = () => {
+        showChangeNickModal = true
     }
 </script>
 
@@ -224,6 +230,15 @@
     <ServerModal bind:showServerModal></ServerModal>
 {/if}
 
+{#if serverContextMenu.visible }
+    <div class="fixed z-50 rounded bg-neutral-800 text-white shadow"
+         style="left: {channelContextMenu.x}px; top: {channelContextMenu.y}px;">
+        <button>Connect</button>
+        <button onclick={disconnectServer}>Disconnect</button>
+        <button>Copy Server Name</button>
+        <button onclick={changeNickname}>Change Nickname</button>
+    </div>
+{/if}
 {#if channelContextMenu.visible }
     <div class="fixed z-50 rounded bg-neutral-800 text-white shadow"
          style="left: {channelContextMenu.x}px; top: {channelContextMenu.y}px;">
@@ -232,13 +247,8 @@
         <button>Copy Channel Name</button>
     </div>
 {/if}
-{#if serverContextMenu.visible }
-    <div class="fixed z-50 rounded bg-neutral-800 text-white shadow"
-         style="left: {channelContextMenu.x}px; top: {channelContextMenu.y}px;">
-        <button>Connect</button>
-        <button onclick={disconnectServer}>Disconnect</button>
-        <button>Copy Server Name</button>
-    </div>
-{/if}
+
+<ChangeNicknameModal bind:showModal={showChangeNickModal} serverId={serverContextMenu.serverId}/>
+
 <style>
 </style>
