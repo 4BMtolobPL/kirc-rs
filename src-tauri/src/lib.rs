@@ -78,6 +78,7 @@ pub fn run() {
             kirc::commands::lock_channel,
             kirc::commands::unlock_channel,
             kirc::commands::is_channel_locked,
+            kirc::commands::change_nickname
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

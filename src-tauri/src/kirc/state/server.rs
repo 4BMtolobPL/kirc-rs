@@ -80,12 +80,14 @@ pub(in crate::kirc) struct ServerState {
     runtime: Mutex<ServerRuntime>,
     config: Mutex<ServerConfig>,
     channels: Mutex<HashMap<ChannelId, ChannelState>>,
+    current_nickname: Mutex<String>,
 }
 
 impl ServerState {
     pub(in crate::kirc) fn new(runtime: ServerRuntime, config: ServerConfig) -> Self {
         Self {
             runtime: Mutex::new(runtime),
+            current_nickname: Mutex::new(config.nickname().to_string()),
             config: Mutex::new(config),
             channels: Mutex::new(HashMap::new()),
         }
@@ -97,6 +99,7 @@ impl ServerState {
     ) -> Self {
         Self {
             runtime: Mutex::new(ServerRuntime::Disconnected),
+            current_nickname: Mutex::new(config.nickname().to_string()),
             config: Mutex::new(config),
             channels: Mutex::new(channels),
         }
@@ -126,6 +129,14 @@ impl ServerState {
 
     pub(in crate::kirc) fn remove_channel(&self, channel_name: &str) -> Option<ChannelState> {
         self.channels.lock().unwrap().remove(channel_name)
+    }
+
+    pub(in crate::kirc) fn current_nickname(&self) -> String {
+        self.current_nickname.lock().unwrap().clone()
+    }
+
+    pub(in crate::kirc) fn set_current_nickname(&self, new_nick: &str) {
+        *self.current_nickname.lock().unwrap() = new_nick.to_string();
     }
 
     pub(in crate::kirc) fn is_active(&self) -> bool {

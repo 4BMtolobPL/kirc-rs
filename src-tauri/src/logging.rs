@@ -21,10 +21,12 @@ pub(super) fn init_logging() {
     let console_layer = tracing_subscriber::fmt::layer()
         .compact()
         .with_target(false)
+        .with_level(true)
         .with_thread_ids(false)
         .with_file(false)
         .with_line_number(false)
-        .with_span_events(FmtSpan::CLOSE);
+        .with_span_events(FmtSpan::CLOSE)
+        .json();
 
     tracing_subscriber::registry()
         .with(filter)

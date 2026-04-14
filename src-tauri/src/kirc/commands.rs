@@ -1,14 +1,12 @@
 use crate::error::MyCustomError;
-use crate::kirc::commands::payload::{
-    ChannelInfo, ChannelPayload, ConnectServerPayload, ServerInfo,
-};
+use crate::kirc::commands::payload::{ChangeNickPayload, ChannelInfo, ChannelPayload, ConnectServerPayload, ServerInfo};
 use crate::kirc::manager::KircManager;
 use crate::kirc::state::kirc::KircState;
-use crate::kirc::types::ServerId;
+use crate::kirc::types::{ServerCommand, ServerId};
 use anyhow::Context;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use tracing::info;
+use tracing::{info, instrument};
 
 #[tauri::command]
 pub(crate) async fn init_servers(manager: State<'_, KircManager>) -> Result<(), MyCustomError> {
@@ -103,7 +101,7 @@ pub(crate) fn send_message(
 
     // 2. 서버 runtime 접근
     let server = state.get_server(server_id).context("Can't find server")?;
-    server.send_command(crate::kirc::types::ServerCommand::Privmsg { target, message })?;
+    server.send_command(ServerCommand::Privmsg { target, message })?;
 
     Ok(())
 }
@@ -180,6 +178,19 @@ pub(crate) fn is_channel_locked(
     state: State<'_, Arc<KircState>>,
 ) -> Result<bool, MyCustomError> {
     Ok(state.is_channel_locked(payload.server_id(), payload.channel()))
+}
+
+#[tauri::command]
+#[instrument(skip(state), fields(server_id = %payload.server_id))]
+pub(crate) fn change_nickname(payload: ChangeNickPayload, state: State<Arc<KircState>>) -> Result<(), MyCustomError> {
+    info!(event="change_nickname", new_nick=%payload.new_nick, "Tauri command: change nickname invoked");
+    
+    let server = state.get_server(payload.server_id).context("Can't find server")?;
+    server.send_command(ServerCommand::Nick(payload.new_nick))?;
+    
+    // 닉네임 변경시 core::handle_message에서 자동으로 ui_event가 emit 됨
+    
+    Ok(())
 }
 
 mod payload {
@@ -344,5 +355,13 @@ mod payload {
             self.channels = Some(channels);
             self
         }
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[derive(Debug)]
+pub(crate) struct ChangeNickPayload {
+        pub(super) server_id: ServerId,
+        pub(super) new_nick: String,
     }
 }

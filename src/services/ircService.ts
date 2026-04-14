@@ -10,7 +10,7 @@ import {
   MessageType,
   type ServerId,
 } from "../types/kirc.svelte";
-import type { ChannelLockChangedEvent, UiEventPayload } from "../types/payloads.svelte";
+import type {ChangeNickFailedPayload, ChannelLockChangedEvent, UiEventPayload} from "../types/payloads.svelte";
 
 export class IrcService {
   async initialize() {
@@ -24,11 +24,11 @@ export class IrcService {
       });
     });
 
-    this.setupEventListeners();
+    await this.setupEventListeners();
   }
 
-  private setupEventListeners() {
-    listen<UiEventPayload>("kirc:event", (event) => {
+  private async setupEventListeners() {
+    await listen<UiEventPayload>("kirc:event", (event) => {
       const payload = event.payload;
 
       switch (payload.type) {
@@ -121,8 +121,15 @@ export class IrcService {
         case "Nick": {
           const server = ircStore.servers.get(payload.server_id);
           if (server) {
+            // 내 닉네임이 변경된거면 server.nickname 수정하기
             if (server.nickname === payload.old_nick) {
               server.nickname = payload.new_nick;
+
+              ircStore.servers.set(payload.server_id, {
+                ...server,
+                nickname: payload.new_nick
+              });
+              ircStore.nickSuccess.set(payload.server_id, payload.new_nick);
             }
             for (const channel of ircStore.channels.values()) {
               if (channel.serverId === payload.server_id && channel.users.has(payload.old_nick)) {
@@ -175,8 +182,8 @@ export class IrcService {
       }
     });
 
-    listen<any>("kirc:server_status", (event) => {
-      const { serverId, status } = event.payload;
+    await listen<any>("kirc:server_status", (event) => {
+      const {serverId, status} = event.payload;
       const server = ircStore.servers.get(serverId);
       if (server) {
         ircStore.servers.set(serverId, {
@@ -186,7 +193,7 @@ export class IrcService {
       }
     });
 
-    listen<any>("kirc:server_added", (event) => {
+    await listen<any>("kirc:server_added", (event) => {
       const payload = event.payload;
       if (ircStore.servers.has(payload.serverId)) return;
 
@@ -202,9 +209,14 @@ export class IrcService {
       });
     });
 
-    listen<ChannelLockChangedEvent>("kirc:channel_lock_changed", (event) => {
+    await listen<ChannelLockChangedEvent>("kirc:channel_lock_changed", (event) => {
       const { channel, locked } = event.payload;
       this.updateChannelLock(channel, locked);
+    });
+
+    await listen<ChangeNickFailedPayload>('kirc:change_nick_failed', (event) => {
+      const {serverId, reason} = event.payload;
+      ircStore.nickErrors.set(serverId, reason);
     });
   }
 

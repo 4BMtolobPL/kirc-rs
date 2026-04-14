@@ -1,7 +1,4 @@
-use crate::kirc::emits::payload::{
-    ChannelLockChangedEvent, ServerDetail, ServerStatusPayload, SystemMessagePayload,
-    UIEventPayload,
-};
+use crate::kirc::emits::payload::{ChangeNickFailedPayload, ChannelLockChangedEvent, ServerDetail, ServerStatusPayload, SystemMessagePayload, UIEventPayload};
 use crate::kirc::types::{ServerId, ServerStatus};
 use tauri::{AppHandle, Emitter};
 use tracing::trace;
@@ -197,6 +194,12 @@ pub(super) fn emit_system_message(
     Ok(())
 }
 
+pub(super) fn emit_change_nick_failed(app_handle: &AppHandle, server_id: ServerId, reason: &str) -> anyhow::Result<()> {
+    app_handle.emit("kirc:change_nick_failed", ChangeNickFailedPayload::new(server_id, reason))?;
+
+    Ok(())
+}
+
 mod payload {
     use crate::kirc::types::{ChannelId, ServerId, ServerStatus};
     use serde::Serialize;
@@ -319,5 +322,21 @@ mod payload {
             server_id: ServerId,
             message: String,
         },
+    }
+
+    #[derive(Serialize, Clone)]
+    #[serde(rename_all = "camelCase")]
+    pub(super) struct ChangeNickFailedPayload {
+        server_id: ServerId,
+        reason: String,
+    }
+
+    impl ChangeNickFailedPayload {
+        pub(super) fn new(server_id: ServerId, reason: &str) -> Self {
+            Self {
+                server_id,
+                reason: reason.to_string()
+            }
+        }
     }
 }

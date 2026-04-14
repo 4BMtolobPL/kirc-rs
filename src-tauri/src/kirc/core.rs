@@ -1,4 +1,4 @@
-use crate::kirc::emits::{emit_server_status, emit_system_message, emit_ui_event};
+use crate::kirc::emits::{emit_change_nick_failed, emit_server_status, emit_system_message, emit_ui_event};
 use crate::kirc::state::kirc::KircState;
 use crate::kirc::types::server::ServerConfig;
 use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
@@ -6,9 +6,9 @@ use futures::prelude::*;
 use irc::client::prelude::*;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
-use tracing::{debug, error, instrument, trace};
+use tracing::{debug, error, info, instrument, trace, warn};
 
-#[instrument(skip(app_handle))]
+#[instrument(name = "server_actor", skip_all, fields(server_id = %server_id))]
 pub(super) async fn server_actor(
     server_id: ServerId,
     server_config: ServerConfig,
@@ -22,10 +22,12 @@ pub(super) async fn server_actor(
         port: Some(server_config.port()),
         use_tls: Some(server_config.use_tls()),
         nickname: Some(server_config.nickname().to_string()),
-        alt_nicks: vec![
+        // alt 닉네임 직접 제어
+        /*alt_nicks: vec![
             format!("{}_", server_config.nickname()),
             format!("{}__", server_config.nickname()),
-        ],
+        ],*/
+        alt_nicks: vec![],
         ..Config::default()
     };
 
@@ -67,14 +69,33 @@ pub(super) async fn server_actor(
             Some(result) = stream.next() => {
                 match result {
                     Ok(message) => {
+                        debug!(event = "irc_message", command = ?message.command);
                         let _ = handle_message(server_id, message, &app_handle);
                     }
-                    Err(_) => break,
+                    Err(irc::error::Error::NoUsableNick) => {
+                        // 사용 가능한 닉네임이 없을때 (단순 닉네임 중복 등)
+                        // 처음부터 사용가능한 닉네임이 없었다면 identify에서 걸렸을테니 break 하지 않고 continue
+                        debug!(event = "irc_stream_error", error = "NoUsableNick", "IRC stream error, No usable nick");
+
+                        // 닉네임 변경은 alt_nick 없이 실패시 emit 후 바로 continue
+                        let _ = emit_change_nick_failed(&app_handle, server_id, "Can't change nickname");
+
+                        continue
+                    }
+                    Err(e) => {
+                        error!(
+                            event = "irc_stream_error",
+                            error = ?e,
+                            "IRC stream error, connection likely closed"
+                        );
+                        break
+                    },
                 }
             }
             Some(cmd) = rx.recv() => {
                 match cmd {
                     ServerCommand::Join(ch) => {
+                        info!(event = "join", channel = %ch);
                         if let Err(e) = client.send_join(&ch) {
                             error!("Failed to send join message: {e}");
                         }
@@ -84,7 +105,16 @@ pub(super) async fn server_actor(
                             error!("Failed to send privmsg: {e}");
                         }
 
-                        match Message::with_tags(None, Some(client.current_nickname()), "PRIVMSG", vec![&target, &message]) {
+                        let current_nick = {
+                            let state = app_handle.state::<Arc<KircState>>();
+                            if let Some(server) = state.get_server(server_id) {
+                                &server.current_nickname()
+                            } else {
+                                ""
+                            }
+                        };
+
+                        match Message::with_tags(None, Some(&current_nick), "PRIVMSG", vec![&target, &message]) {
                                 Ok(msg) => {
                                     handle_message(server_id, msg, &app_handle).expect("Failed to handle message");
                                 }
@@ -96,6 +126,12 @@ pub(super) async fn server_actor(
                     ServerCommand::Part { channel_name } => {
                         if let Err(e) = client.send_part(&channel_name) {
                             error!("Failed to send part: {e}");
+                        }
+                    }
+                    ServerCommand::Nick( new_nick ) => {
+                        info!(event = "nick", new_nick = %new_nick);
+                        if let Err(e) = client.send(Command::NICK(new_nick.to_owned())) {
+                            error!(event = "nick_send_failed", command = "NICK", new_nick = %new_nick, error = %e, "failed to send IRC NICK command");
                         }
                     }
                     ServerCommand::Quit => {
@@ -115,6 +151,7 @@ pub(super) async fn server_actor(
             server.transition_to_disconnected();
         }
     }
+
     let _ = emit_server_status(&app_handle, server_id, ServerStatus::Disconnected);
 }
 
@@ -134,7 +171,6 @@ fn handle_message(
     message: Message,
     app_handle: &AppHandle,
 ) -> anyhow::Result<()> {
-    // trace!(message = %format!("{message}").trim_end());
     let source_nickname = message.source_nickname().unwrap_or("").to_string();
 
     match message.command {
@@ -159,6 +195,23 @@ fn handle_message(
                 .emit()?;
         }
         Command::NICK(nickname) => {
+            // 1. 자기 자신인지 확인
+            let state = app_handle.state::<Arc<KircState>>();
+            if let Some(server) = state.get_server(server_id) {
+                if server.current_nickname() == source_nickname {
+                    server.set_current_nickname(&nickname);
+                }
+            }
+
+            // 지금은 백엔드에서 유저목록 관리 x, 나중에 변경될 수 있음
+            // 2. 모든 채널에서 유저 닉 변경
+            /*for channel in state.channels.values_mut() {
+                if channel.users.remove(&old_nick) {
+                    channel.users.insert(new_nick.clone());
+                }
+            }*/
+
+            // 3. 프론트로 이벤트 emit
             emit_ui_event(app_handle)
                 .nick(server_id, source_nickname, nickname)
                 .emit()?;
@@ -169,6 +222,7 @@ fn handle_message(
                 .emit()?;
         }
         Command::ERROR(message) => {
+            warn!(message = %message, "Server command error");
             emit_ui_event(app_handle).error(server_id, message).emit()?;
         }
         Command::Response(Response::RPL_WELCOME, _) => {
@@ -189,6 +243,12 @@ fn handle_message(
 
             // Optional: Alert system message
             emit_system_message(app_handle, server_id, "서버에 연결되었습니다.")?;
+        }
+        Command::Response(Response::ERR_NICKNAMEINUSE, _) => {
+            // 닉네임이 중복된 경우
+            // alt nick으로 재시도
+            // 그래도 안될경우 오류 던지기
+            trace!("닉네임 중복");
         }
         _ => {
             // TODO: Command 다른것도 추가하기

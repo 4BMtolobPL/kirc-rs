@@ -22,6 +22,7 @@ pub(in crate::kirc) enum ServerCommand {
     Join(String),
     Privmsg { target: String, message: String },
     Part { channel_name: String },
+    Nick(String),
     Quit,
 }
 
@@ -31,6 +32,7 @@ impl Display for ServerCommand {
             ServerCommand::Join(x) => write!(f, "Join, {x}"),
             ServerCommand::Privmsg { target, message } => write!(f, "Privmsg, {target}, {message}"),
             ServerCommand::Part { channel_name } => write!(f, "Part, {channel_name}"),
+            ServerCommand::Nick(new_nick) => write!(f, "Nick, {new_nick}"),
             ServerCommand::Quit => write!(f, "Quit"),
         }
     }

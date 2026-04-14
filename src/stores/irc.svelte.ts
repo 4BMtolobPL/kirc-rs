@@ -7,6 +7,8 @@ export class IrcStore {
   messages = $state(new SvelteMap<ChannelId, ChatMessage[]>());
   currentServerId = $state<ServerId | null>(null);
   currentChannelId = $state<ChannelId | null>(null);
+  nickErrors = $state(new SvelteMap<ServerId, string>());
+  nickSuccess = $state(new SvelteMap<ServerId, string>());
 
   currentServer = $derived.by(() => {
     if (!this.currentServerId) return null;
