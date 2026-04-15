@@ -1,4 +1,4 @@
-import type {ServerId} from "./kirc.svelte";
+import type { ServerId } from "./kirc.svelte";
 
 export enum ServerStatus {
   Connecting = "Connecting",
@@ -46,6 +46,6 @@ export type ChannelLockChangedEvent = {
 };
 
 export type ChangeNickFailedPayload = {
-    serverId: ServerId;
-    reason: string
+  serverId: ServerId;
+  reason: string;
 };

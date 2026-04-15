@@ -10,7 +10,11 @@ import {
   MessageType,
   type ServerId,
 } from "../types/kirc.svelte";
-import type {ChangeNickFailedPayload, ChannelLockChangedEvent, UiEventPayload} from "../types/payloads.svelte";
+import type {
+  ChangeNickFailedPayload,
+  ChannelLockChangedEvent,
+  UiEventPayload,
+} from "../types/payloads.svelte";
 
 export class IrcService {
   async initialize() {
@@ -127,7 +131,7 @@ export class IrcService {
 
               ircStore.servers.set(payload.server_id, {
                 ...server,
-                nickname: payload.new_nick
+                nickname: payload.new_nick,
               });
               ircStore.nickSuccess.set(payload.server_id, payload.new_nick);
             }
@@ -183,7 +187,7 @@ export class IrcService {
     });
 
     await listen<any>("kirc:server_status", (event) => {
-      const {serverId, status} = event.payload;
+      const { serverId, status } = event.payload;
       const server = ircStore.servers.get(serverId);
       if (server) {
         ircStore.servers.set(serverId, {
@@ -214,8 +218,8 @@ export class IrcService {
       this.updateChannelLock(channel, locked);
     });
 
-    await listen<ChangeNickFailedPayload>('kirc:change_nick_failed', (event) => {
-      const {serverId, reason} = event.payload;
+    await listen<ChangeNickFailedPayload>("kirc:change_nick_failed", (event) => {
+      const { serverId, reason } = event.payload;
       ircStore.nickErrors.set(serverId, reason);
     });
   }

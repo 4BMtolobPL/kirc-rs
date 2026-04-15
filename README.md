@@ -4,13 +4,13 @@ Tauri + SvelteKit + Rust로 만든 데스크톱 IRC 클라이언트입니다.
 
 ## 기술 스택
 
-| 레이어 | 기술 |
-|--------|------|
-| 프론트엔드 | SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4 |
-| 백엔드 | Rust, Tokio (async runtime), irc crate |
-| 데스크톱 프레임워크 | Tauri 2 |
-| 빌드 도구 | Vite, Deno |
-| 코드 품질 | oxlint, oxfmt |
+| 레이어              | 기술                                              |
+| ------------------- | ------------------------------------------------- |
+| 프론트엔드          | SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4 |
+| 백엔드              | Rust, Tokio (async runtime), irc crate            |
+| 데스크톱 프레임워크 | Tauri 2                                           |
+| 빌드 도구           | Vite, Deno                                        |
+| 코드 품질           | oxlint, oxfmt                                     |
 
 ## 기능
 
@@ -147,28 +147,28 @@ deno task fmt:check
 
 ## Tauri 커맨드 (invoke)
 
-| 커맨드 | 설명 |
-|--------|------|
-| `init_servers` | 저장된 서버에 자동 접속 |
-| `get_servers` | 전체 서버 목록 조회 |
-| `connect_server` | 새 서버 연결 |
-| `disconnect_server` | 서버 연결 해제 |
-| `cancel_connect` | 연결 시도 취소 |
-| `join_channel` | 채널 참가 |
-| `leave_channel` | 채널 퇴장 |
-| `send_message` | 메시지 전송 |
-| `lock_channel` | 채널 잠금 |
-| `unlock_channel` | 채널 잠금 해제 |
-| `is_channel_locked` | 채널 잠금 상태 조회 |
+| 커맨드              | 설명                    |
+| ------------------- | ----------------------- |
+| `init_servers`      | 저장된 서버에 자동 접속 |
+| `get_servers`       | 전체 서버 목록 조회     |
+| `connect_server`    | 새 서버 연결            |
+| `disconnect_server` | 서버 연결 해제          |
+| `cancel_connect`    | 연결 시도 취소          |
+| `join_channel`      | 채널 참가               |
+| `leave_channel`     | 채널 퇴장               |
+| `send_message`      | 메시지 전송             |
+| `lock_channel`      | 채널 잠금               |
+| `unlock_channel`    | 채널 잠금 해제          |
+| `is_channel_locked` | 채널 잠금 상태 조회     |
 
 ## Tauri 이벤트 (listen)
 
-| 이벤트 | 설명 |
-|--------|------|
-| `kirc:event` | IRC 이벤트 (메시지, JOIN, PART, QUIT 등) |
-| `kirc:server_status` | 서버 연결 상태 변경 |
-| `kirc:server_added` | 새 서버 추가됨 |
-| `kirc:channel_lock_changed` | 채널 잠금 상태 변경 |
+| 이벤트                      | 설명                                     |
+| --------------------------- | ---------------------------------------- |
+| `kirc:event`                | IRC 이벤트 (메시지, JOIN, PART, QUIT 등) |
+| `kirc:server_status`        | 서버 연결 상태 변경                      |
+| `kirc:server_added`         | 새 서버 추가됨                           |
+| `kirc:channel_lock_changed` | 채널 잠금 상태 변경                      |
 
 ## 데이터 영속성
 
