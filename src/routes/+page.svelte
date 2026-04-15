@@ -1,5 +1,6 @@
 <script lang="ts">
     import {onMount} from "svelte";
+    import {scale} from "svelte/transition";
     import {invoke} from "@tauri-apps/api/core";
     import ServerModal from "./ServerModal.svelte";
     import ChannelJoinModal from "./ChannelJoinModal.svelte";
@@ -231,20 +232,38 @@
 {/if}
 
 {#if serverContextMenu.visible }
-    <div class="fixed z-50 rounded bg-neutral-800 text-white shadow"
-         style="left: {channelContextMenu.x}px; top: {channelContextMenu.y}px;">
-        <button>Connect</button>
-        <button onclick={disconnectServer}>Disconnect</button>
-        <button>Copy Server Name</button>
-        <button onclick={changeNickname}>Change Nickname</button>
+    <div transition:scale={{duration: 100, start: 0.95}}
+         class="fixed z-50 min-w-48 bg-white/95 dark:bg-neutral-800/95 backdrop-blur-md border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl py-1.5 overflow-hidden"
+         style="left: {serverContextMenu.x}px; top: {serverContextMenu.y}px;">
+        <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-sky-50 dark:hover:bg-sky-900/30 hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">🔌</span> Connect
+        </button>
+        <button onclick={disconnectServer} class="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">🚫</span> Disconnect
+        </button>
+        <div class="my-1 border-t border-neutral-100 dark:border-neutral-700"></div>
+        <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">📋</span> Copy Server Name
+        </button>
+        <button onclick={changeNickname} class="w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">👤</span> Change Nickname
+        </button>
     </div>
 {/if}
 {#if channelContextMenu.visible }
-    <div class="fixed z-50 rounded bg-neutral-800 text-white shadow"
+    <div transition:scale={{duration: 100, start: 0.95}}
+         class="fixed z-50 min-w-48 bg-white/95 dark:bg-neutral-800/95 backdrop-blur-md border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl py-1.5 overflow-hidden"
          style="left: {channelContextMenu.x}px; top: {channelContextMenu.y}px;">
-        <button>Join</button>
-        <button onclick={leaveChannel}>Leave</button>
-        <button>Copy Channel Name</button>
+        <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-sky-50 dark:hover:bg-sky-900/30 hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">📥</span> Join
+        </button>
+        <button onclick={leaveChannel} class="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">🚪</span> Leave
+        </button>
+        <div class="my-1 border-t border-neutral-100 dark:border-neutral-700"></div>
+        <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2 transition-colors">
+            <span class="w-4 text-center opacity-70">📋</span> Copy Channel Name
+        </button>
     </div>
 {/if}
 
