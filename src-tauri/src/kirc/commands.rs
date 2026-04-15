@@ -1,5 +1,7 @@
 use crate::error::MyCustomError;
-use crate::kirc::commands::payload::{ChangeNickPayload, ChannelInfo, ChannelPayload, ConnectServerPayload, ServerInfo};
+use crate::kirc::commands::payload::{
+    ChangeNickPayload, ChannelInfo, ChannelPayload, ConnectServerPayload, ServerInfo,
+};
 use crate::kirc::manager::KircManager;
 use crate::kirc::state::kirc::KircState;
 use crate::kirc::types::{ServerCommand, ServerId};
@@ -182,14 +184,19 @@ pub(crate) fn is_channel_locked(
 
 #[tauri::command]
 #[instrument(skip(state), fields(server_id = %payload.server_id))]
-pub(crate) fn change_nickname(payload: ChangeNickPayload, state: State<Arc<KircState>>) -> Result<(), MyCustomError> {
+pub(crate) fn change_nickname(
+    payload: ChangeNickPayload,
+    state: State<Arc<KircState>>,
+) -> Result<(), MyCustomError> {
     info!(event="change_nickname", new_nick=%payload.new_nick, "Tauri command: change nickname invoked");
-    
-    let server = state.get_server(payload.server_id).context("Can't find server")?;
+
+    let server = state
+        .get_server(payload.server_id)
+        .context("Can't find server")?;
     server.send_command(ServerCommand::Nick(payload.new_nick))?;
-    
+
     // 닉네임 변경시 core::handle_message에서 자동으로 ui_event가 emit 됨
-    
+
     Ok(())
 }
 
@@ -360,7 +367,7 @@ mod payload {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     #[derive(Debug)]
-pub(crate) struct ChangeNickPayload {
+    pub(crate) struct ChangeNickPayload {
         pub(super) server_id: ServerId,
         pub(super) new_nick: String,
     }

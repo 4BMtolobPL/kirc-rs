@@ -1,4 +1,6 @@
-use crate::kirc::emits::{emit_change_nick_failed, emit_server_status, emit_system_message, emit_ui_event};
+use crate::kirc::emits::{
+    emit_change_nick_failed, emit_server_status, emit_system_message, emit_ui_event,
+};
 use crate::kirc::state::kirc::KircState;
 use crate::kirc::types::server::ServerConfig;
 use crate::kirc::types::{ServerCommand, ServerId, ServerStatus};
@@ -114,7 +116,7 @@ pub(super) async fn server_actor(
                             }
                         };
 
-                        match Message::with_tags(None, Some(&current_nick), "PRIVMSG", vec![&target, &message]) {
+                        match Message::with_tags(None, Some(current_nick), "PRIVMSG", vec![&target, &message]) {
                                 Ok(msg) => {
                                     handle_message(server_id, msg, &app_handle).expect("Failed to handle message");
                                 }
