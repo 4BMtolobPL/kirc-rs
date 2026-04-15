@@ -174,9 +174,9 @@ deno task fmt:check
 
 앱 종료 시 서버 설정과 채널 목록이 OS 앱 데이터 디렉토리에 `config.json`으로 저장됩니다.
 
-- **macOS**: `~/Library/Application Support/com.kimtalmo.irc-client/config.json`
-- **Windows**: `%APPDATA%\com.kimtalmo.irc-client\config.json`
-- **Linux**: `~/.local/share/com.kimtalmo.irc-client/config.json`
+- **macOS**: `~/Library/Application Support/com.kimtalmo.kirc/config.json`
+- **Windows**: `%APPDATA%\com.kimtalmo.kirc\config.json`
+- **Linux**: `~/.local/share/com.kimtalmo.kirc/config.json`
 
 저장되는 정보: 서버 호스트·포트·TLS·닉네임, 참가 중인 채널 목록 및 잠금 상태.  
 메시지 히스토리는 세션 내 메모리에만 유지되며 저장되지 않습니다.

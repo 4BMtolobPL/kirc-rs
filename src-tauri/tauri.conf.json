@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "irc-client",
+  "productName": "kirc",
   "version": "0.1.0",
-  "identifier": "com.kimtalmo.irc-client",
+  "identifier": "com.kimtalmo.kirc",
   "build": {
     "beforeDevCommand": "deno task dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "irc-client",
+        "title": "kirc",
         "width": 800,
         "height": 600
       }

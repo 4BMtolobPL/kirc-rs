@@ -1,7 +1,7 @@
 [package]
-name = "irc-client"
+name = "kirc"
 version = "0.1.0"
-description = "A Tauri App"
+description = "IRC client built with Tauri"
 authors = ["you"]
 edition = "2021"
 
