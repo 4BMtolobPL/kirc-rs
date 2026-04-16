@@ -3,6 +3,28 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+#[cfg(debug_assertions)]
+pub(super) fn init_logging() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // 콘솔 로그
+    let console_layer = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_target(false)
+        .with_level(true)
+        .with_thread_ids(false)
+        .with_file(false)
+        .with_line_number(false)
+        .with_span_events(FmtSpan::CLOSE)
+        .pretty();
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(console_layer)
+        .init();
+}
+
+#[cfg(not(debug_assertions))]
 pub(super) fn init_logging() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
