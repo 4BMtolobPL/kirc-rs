@@ -1,3 +1,4 @@
+use crate::kirc::ctcp::{parse_ctcp, CtcpCommand};
 use crate::kirc::emits::{
     emit_change_nick_failed, emit_server_status, emit_system_message, emit_ui_event,
 };
@@ -71,8 +72,7 @@ pub(super) async fn server_actor(
             Some(result) = stream.next() => {
                 match result {
                     Ok(message) => {
-                        debug!(event = "irc_message", command = ?message.command);
-                        let _ = handle_message(server_id, message, &app_handle);
+                        let _ = handle_message(&client, server_id, message, &app_handle);
                     }
                     Err(irc::error::Error::NoUsableNick) => {
                         // 사용 가능한 닉네임이 없을때 (단순 닉네임 중복 등)
@@ -118,7 +118,7 @@ pub(super) async fn server_actor(
 
                         match Message::with_tags(None, Some(current_nick), "PRIVMSG", vec![&target, &message]) {
                                 Ok(msg) => {
-                                    handle_message(server_id, msg, &app_handle).expect("Failed to handle message");
+                                    handle_message(&client, server_id, msg, &app_handle).expect("Failed to handle message");
                                 }
                                 Err(_) => {
                                     error!("Failed to create echo message");
@@ -167,8 +167,10 @@ fn fail_state(server_id: ServerId, app_handle: AppHandle, message: String) {
     let _ = emit_server_status(&app_handle, server_id, ServerStatus::Failed);
 }
 
-#[instrument(skip(app_handle, message), level = "trace")]
+/// 서버에서 클라이언트로 보낸 메세지 핸들링
+#[instrument(skip(client, app_handle, message), level = "trace")]
 fn handle_message(
+    client: &Client,
     server_id: ServerId,
     message: Message,
     app_handle: &AppHandle,
@@ -177,9 +179,14 @@ fn handle_message(
 
     match message.command {
         Command::PRIVMSG(target, content) => {
-            emit_ui_event(app_handle)
-                .user_message(server_id, target, source_nickname, content)
-                .emit()?;
+            if let Some(ctcp) = parse_ctcp(&content) {
+                info!(target = %target, content = %content, "Received CTCP message");
+                handle_ctcp(client, &source_nickname, ctcp);
+            } else {
+                emit_ui_event(app_handle)
+                    .user_message(server_id, target, source_nickname, content)
+                    .emit()?;
+            }
         }
         Command::JOIN(chanlist, _chankey, _real_name) => {
             emit_ui_event(app_handle)
@@ -254,8 +261,35 @@ fn handle_message(
         }
         _ => {
             // TODO: Command 다른것도 추가하기
+            debug!(event = "unprocessed_irc_message", command = ?message.command);
         }
     }
 
     Ok(())
+}
+
+fn handle_ctcp(client: &Client, source_nickname: &str, ctcp: CtcpCommand) {
+    debug!(event = "handle_ctcp_message", command = ?ctcp);
+    match ctcp {
+        CtcpCommand::Version => {
+            let reply = "\x01VERSION kirc v0.1\x01";
+            let _ = client.send_notice(source_nickname, reply);
+        }
+
+        CtcpCommand::Ping(payload) => {
+            let reply = format!("\x01PING {}\x01", payload);
+            let _ = client.send_notice(source_nickname, &reply);
+        }
+
+        CtcpCommand::Time => {
+            let now = chrono::Local::now().to_rfc2822();
+            let reply = format!("\x01TIME {}\x01", now);
+            let _ = client.send_notice(source_nickname, &reply);
+        }
+
+        CtcpCommand::Unknown(msg) => {
+            // 무시 (보통 응답 안 함)
+            warn!(event = "unknown_ctcp_command", message = %msg)
+        }
+    }
 }
