@@ -235,7 +235,6 @@ fn handle_message(
             emit_ui_event(app_handle).error(server_id, message).emit()?;
         }
         Command::Response(Response::RPL_WELCOME, _) => {
-            trace!("Response RPL_WELCOME");
             {
                 let state = app_handle.state::<Arc<KircState>>();
                 if let Some(server) = state.get_server(server_id) {
@@ -269,8 +268,9 @@ fn handle_message(
 }
 
 fn handle_ctcp(client: &Client, source_nickname: &str, ctcp: CtcpCommand) {
-    debug!(event = "handle_ctcp_message", command = ?ctcp);
+
     if let Some(reply) = get_ctcp_reply(&ctcp) {
+        info!(event = "handle_ctcp_message", ctcp = ?ctcp, reply = %reply);
         let _ = client.send_notice(source_nickname, &reply);
     } else {
         if let CtcpCommand::Unknown(msg) = ctcp {
